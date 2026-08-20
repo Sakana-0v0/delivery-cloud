@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Encoding">
+    <file url="file://$USER_HOME$/src/main/java" charset="UTF-8" />
+    <file url="file://$USER_HOME$/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/dei-gateway/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/dei-gateway/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-IdGenerator/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-IdGenerator/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-admin/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-admin/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-comment/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-comment/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-common/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-common/src/main/java/com/sakana/exceptions/ModuleCodeSegment.java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-common/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-order/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-order/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-payment/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-payment/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-product/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-product/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-user/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/del-user/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
+  </component>
+</project>

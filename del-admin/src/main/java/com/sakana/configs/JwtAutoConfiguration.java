@@ -1,0 +1,21 @@
+package com.sakana.configs;
+
+import com.sakana.utils.JwtUtil;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * JWT Bean 配置（del-admin）
+ *
+ * <p>密钥独立配置：app.jwt.secret=del-admin-secret-key-different-from-del-user
+ */
+@Configuration
+@EnableConfigurationProperties(JwtProperties.class)
+public class JwtAutoConfiguration {
+
+    @Bean
+    public JwtUtil jwtUtil(JwtProperties jwtProperties) {
+        return new JwtUtil(jwtProperties);
+    }
+}
