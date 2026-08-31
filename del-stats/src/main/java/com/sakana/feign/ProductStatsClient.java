@@ -14,6 +14,7 @@ import java.util.List;
  */
 @FeignClient(
     name = "del-product",
+    contextId = "statsProductStatsClient",
     fallbackFactory = ProductStatsClientFallbackFactory.class
 )
 public interface ProductStatsClient {

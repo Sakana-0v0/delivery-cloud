@@ -16,6 +16,7 @@ import java.time.LocalDate;
  */
 @FeignClient(
     name = "del-order",
+    contextId = "statsOrderStatsClient",
     fallbackFactory = OrderStatsClientFallbackFactory.class
 )
 public interface OrderStatsClient {

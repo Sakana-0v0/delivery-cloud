@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
  */
 @FeignClient(
     name = "del-user",
+    contextId = "statsUserStatsClient",
     fallbackFactory = UserStatsClientFallbackFactory.class
 )
 public interface UserStatsClient {
