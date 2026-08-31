@@ -1,10 +1,10 @@
 package com.sakana.web.controllers;
 
 import com.sakana.exceptions.BizException;
-import com.sakana.request.LoginReq;
-import com.sakana.request.RegisterReq;
-import com.sakana.request.SendCodeReq;
-import com.sakana.security.LoginUser;
+import com.sakana.dto.request.LoginReq;
+import com.sakana.dto.request.RegisterReq;
+import com.sakana.dto.request.SendCodeReq;
+import com.sakana.security.AuthLoginUser;
 import com.sakana.security.TokenBlacklist;
 import com.sakana.services.UserService;
 import com.sakana.services.VerifyCodeService;
@@ -66,7 +66,7 @@ public class AuthController {
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(req.getUsername(), req.getPassword())
             );
-            LoginUser loginUser = (LoginUser) authentication.getPrincipal();
+            AuthLoginUser loginUser = (AuthLoginUser) authentication.getPrincipal();
 
             String accessToken = jwtUtil.generateAccessToken(
                     loginUser.getUserId(), loginUser.getUsername(), loginUser.getRole());

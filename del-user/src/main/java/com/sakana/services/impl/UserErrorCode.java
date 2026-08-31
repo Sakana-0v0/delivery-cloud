@@ -24,6 +24,7 @@ public enum UserErrorCode implements BaseErrorCode {
     OLD_PASSWORD_WRONG(2011, "原密码错误", 400),
     PARAM_INVALID(1001, "参数校验失败", 400),
     PARAM_MISSING(1002, "缺少必填参数", 400),
+    ADDRESS_NOT_FOUND(4030, "收货地址不存在", 404),
     ;
 
     private final int code;

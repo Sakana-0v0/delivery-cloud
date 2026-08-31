@@ -72,4 +72,11 @@ public interface ProductService extends IService<Product> {
      * 清除商品缓存
      */
     void evictCache(Long id);
+
+    /**
+     * 商品快照（供 del-order 进程内调用，省去 Feign 开销）
+     * 不走 Redis 缓存，直接查库并映射为快照 VO。
+     * 下架 / 不存在的商品抛 BizException(NOT_FOUND)。
+     */
+    com.sakana.feign.vo.ProductSnapshotVO getProductSnapshot(Long id);
 }

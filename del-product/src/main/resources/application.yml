@@ -1,133 +1,34 @@
 server:
   port: 10000
 
-
 spring:
   application:
-    name: product
-
-  active:
-    profile: dev
-
-
+    name: del-product
+  profiles:
+    active: dev
   cloud:
     nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+        namespace: sakana
       config:
         server-addr: 127.0.0.1:8848
         namespace: sakana
         group: DEFAULT_GROUP
         file-extension: yml
-        import-check:
-          enabled: true
-
-
-
-      # 继承上方公共配置，无需单独指定 server-addr
-
   config:
     import:
-      - optional:nacos:${spring.application.name}-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}?group=DEFAULT_GROUP&refreshEnabled=true
-      - optional:nacos:springdoc-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}?group=DEFAULT_GROUP&refreshEnabled=true
-      - optional:nacos:datasource.${spring.cloud.nacos.config.file-extension}?group=DEFAULT_GROUP&refreshEnabled=true
-      - optional:nacos:mybatisPlus.${spring.cloud.nacos.config.file-extension}?group=DEFAULT_GROUP&refreshEnabled=true
-      - optional:nacos:redis-${spring.application.name}.${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}?group=DEFAULT_GROUP&refreshEnabled=true
-#  datasource:
-#    driver-class-name: com.mysql.cj.jdbc.Driver
-#    url: jdbc:mysql://localhost:3306/food_2?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
-#    username: root
-#    password: ${DB_PASSWORD}
+      - optional:nacos:common-jwt.yml
+      - optional:nacos:common-jackson.yml
+      - optional:nacos:common-redis.yml
+      - optional:nacos:common-mybatis.yml
+      - optional:nacos:common-actuator.yml
+      - optional:nacos:common-swagger.yml
+      - optional:nacos:del-product.yml
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
 
-#  data:
-#    redis:
-#      host: localhost
-#      port: 6379
-#      password: 123456
-#      database: 0
-#      lettuce:
-#        pool:
-#          max-active: 50
-#          max-idle: 20
-#          min-idle: 5
-#          max-wait: 3000ms
-
-
-
----
-spring:
-  config:
-    activate:
-      on-profile: dev
-
-server:
-  port: 10001
-
-
-
----
-spring:
-  config:
-    activate:
-      on-profile: prod
-
-
-server:
-  port: 10002
-
-#mybatis-plus:
-#  configuration:
-#    map-underscore-to-camel-case: true
-#    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-#  global-config:
-#    db-config:
-#      logic-delete-field: isDeleted
-#      logic-delete-value: 1
-#      logic-not-delete-value: 0
-#  type-aliases-package: com.boot.food.entity
-#  mapper-locations: classpath*:/mapper/**/*.xml
-
-
-
-
-app:
-  jwt:
-    secret: dev-only-secret-do-not-use-in-production
-    access-expire-seconds: 7200
-    refresh-expire-seconds: 1209600
-
-
-#springdoc:
-#  api-docs:
-#    path: /api-docs          # 自定义 OpenAPI JSON 文档路径
-#  swagger-ui:
-#    path: /swagger-ui.html   # 自定义 Swagger UI 访问路径
-#    enabled: true
-
-#management:
-#  endpoints:
-#    web:
-#      base-path: /my-actuator
-#      exposure:
-#        include: health,info,metrics,beans,env,configprops,loggers,threaddump,prometheus
-#  endpoint:
-#    health:
-#      show-details: always
-#      show-components: always
-#    metrics:
-#      enabled: true
-#    prometheus:
-#      enabled: true
-#    shutdown:
-#      enabled: true
-#    loggers:
-#      enabled: true
-
-logging:
-  level:
-    root: INFO
-  pattern:
-    console: '%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n'
-  logback:
-    rollingpolicy:
-      max-file-size: 10MB
-      max-history: 7

@@ -22,22 +22,23 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Spring Security 配置
+ * del-user Spring Security 配置
  *
+ * <p>路径规则：
  * <ul>
- *   <li>无状态会话（JWT）</li>
- *   <li>禁用 CSRF / FormLogin / HttpBasic</li>
- *   <li>开放公开路径</li>
- *   <li>JWT Filter 在 UsernamePasswordAuthenticationFilter 之前</li>
+ *   <li>/api/v1/auth/** → 公开（注册、登录）</li>
+ *   <li>/internal/** → 内部服务调用（需 X-Internal-Service-Token 头）</li>
+ *   <li>/api/v1/user/addresses/** → USER 角色</li>
  * </ul>
  */
-@Configuration
+@Configuration("userSecurityConfig")
 @EnableWebSecurity
 @EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final GatewayUserInfoFilter gatewayUserInfoFilter;
+    private final InternalServiceAuthFilter internalServiceAuthFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -59,13 +60,19 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
-                        // 公开路径
                         .requestMatchers("/api/v1/auth/**").permitAll()
+                        // 内部接口（需内部服务认证）
+                        .requestMatchers("/internal/**").hasRole("INTERNAL_SERVICE")
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/doc.html").permitAll()
-                        // 其他路径需要认证
+                        .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers("/api/v1/user/addresses/**").hasRole("USER")
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                // 内部服务认证过滤器（最先执行）
+                .addFilterBefore(internalServiceAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                // 网关用户信息过滤器
+                .addFilterBefore(gatewayUserInfoFilter, UsernamePasswordAuthenticationFilter.class)
+        ;
 
         return http.build();
     }

@@ -31,7 +31,8 @@ public class JwtUtil {
     public JwtUtil(JwtProperties jwtProperties) {
         this.jwtProperties = jwtProperties;
         // 确保密钥长度足够（HS256 需要至少 256 位）
-        String secret = jwtProperties.getSecret();
+        // 优先使用 userPoolSecret；为空时回退到 legacy secret（向后兼容）
+        String secret = jwtProperties.getEffectiveUserSecret();
         if (secret.length() < 32) {
             secret = secret + "0".repeat(32 - secret.length());
         }

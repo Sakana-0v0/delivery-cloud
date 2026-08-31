@@ -1,29 +1,37 @@
 package com.sakana.dao.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.math.BigDecimal;
 
 /**
  * 订单项
+ *
+ * <p>字段映射：
+ * <ul>
+ *   <li>product_price  → DB price</li>
+ *   <li>subtotalAmount → DB subtotal</li>
+ * </ul>
  */
 @TableName("t_order_item")
 public class OrderItem extends BaseEntity {
 
     private Long orderId;
-    private String orderNo;
     private Long productId;
     private String productName;
     private String productCover;
+
+    @TableField("price")
     private BigDecimal productPrice;
+
     private Integer quantity;
+
+    @TableField("subtotal")
     private BigDecimal subtotalAmount;
 
     public Long getOrderId() { return orderId; }
     public void setOrderId(Long orderId) { this.orderId = orderId; }
-
-    public String getOrderNo() { return orderNo; }
-    public void setOrderNo(String orderNo) { this.orderNo = orderNo; }
 
     public Long getProductId() { return productId; }
     public void setProductId(Long productId) { this.productId = productId; }

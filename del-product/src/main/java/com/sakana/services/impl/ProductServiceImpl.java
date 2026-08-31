@@ -1,8 +1,6 @@
 package com.sakana.services.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sakana.dao.entity.Category;
@@ -14,10 +12,12 @@ import com.sakana.dto.request.StockAdjustReq;
 import com.sakana.enums.ProductErrorCode;
 import com.sakana.exceptions.BizException;
 import com.sakana.services.ProductService;
+import com.sakana.utils.SnowflakeIdGenerator;
 import com.sakana.web.vo.ProductPageResp;
 import com.sakana.web.vo.ProductVO;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import com.sakana.feign.vo.ProductSnapshotVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -30,15 +30,11 @@ import java.util.stream.Collectors;
 
 /**
  * 商品服务实现
- *
- * <p>注：评价计数（likeCount/dislikeCount）由评价服务维护，
- * 本服务不直接调用 del-comment，通过 MQ 或后续聚合查询获取。
- * 当前实现中这两个字段统一填充 0。
  */
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> implements ProductService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProductServiceImpl.class);
 
     private static final String CACHE_KEY_PREFIX = "del-product:product:detail:";
     private static final long CACHE_TTL_MINUTES = 30;
@@ -46,20 +42,31 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
     private final RedisTemplate<String, Object> redisTemplate;
     private final CategoryMapper categoryMapper;
     private final ProductMapper productMapper;
+    private final SnowflakeIdGenerator snowflakeIdGenerator;
+
+    public ProductServiceImpl(RedisTemplate<String, Object> redisTemplate,
+                              CategoryMapper categoryMapper,
+                              ProductMapper productMapper,
+                              SnowflakeIdGenerator snowflakeIdGenerator) {
+        this.redisTemplate = redisTemplate;
+        this.categoryMapper = categoryMapper;
+        this.productMapper = productMapper;
+        this.snowflakeIdGenerator = snowflakeIdGenerator;
+    }
 
     // ==================== C 端 ====================
 
     @Override
     public ProductPageResp getPage(Long categoryId, String keyword, int page, int size) {
         Page<Product> pageParam = new Page<>(page, size);
-        pageParam.addOrder(OrderItem.desc("sales"));
+        com.baomidou.mybatisplus.core.metadata.OrderItem.desc("sales");
 
         LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Product::getStatus, 0)
                .eq(categoryId != null, Product::getCategoryId, categoryId)
                .like(keyword != null && !keyword.isBlank(), Product::getName, keyword);
 
-        IPage<Product> pageResult = page(pageParam, wrapper);
+        com.baomidou.mybatisplus.core.metadata.IPage<Product> pageResult = page(pageParam, wrapper);
 
         Map<Long, String> categoryNameMap = getCategoryNameMap();
 
@@ -127,14 +134,14 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
     public ProductPageResp adminGetPage(Long categoryId, String keyword, Integer status,
                                         int page, int size) {
         Page<Product> pageParam = new Page<>(page, size);
-        pageParam.addOrder(OrderItem.desc("createTime"));
+        com.baomidou.mybatisplus.core.metadata.OrderItem.desc("createTime");
 
         LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(categoryId != null, Product::getCategoryId, categoryId)
                .eq(status != null, Product::getStatus, status)
                .like(keyword != null && !keyword.isBlank(), Product::getName, keyword);
 
-        IPage<Product> pageResult = page(pageParam, wrapper);
+        com.baomidou.mybatisplus.core.metadata.IPage<Product> pageResult = page(pageParam, wrapper);
 
         Map<Long, String> categoryNameMap = getCategoryNameMap();
 
@@ -174,9 +181,12 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
 
         Product product = new Product();
         BeanUtils.copyProperties(req, product);
+        // 动态生成 fid（Snowflake）
+        product.setFid(String.valueOf(snowflakeIdGenerator.nextId()));
         product.setSales(0);
         save(product);
-        log.info("[商品创建] id={}, name={}, stock={}", product.getId(), product.getName(), product.getStock());
+        log.info("[商品创建] id={}, fid={}, name={}, stock={}",
+                product.getId(), product.getFid(), product.getName(), product.getStock());
     }
 
     @Override
@@ -192,11 +202,10 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
             throw new BizException(ProductErrorCode.CATEGORY_NOT_FOUND);
         }
 
-        // 库存与销量走专门接口
-        BeanUtils.copyProperties(req, exist, "stock", "sales");
+        BeanUtils.copyProperties(req, exist, "stock", "sales", "fid");
         updateById(exist);
         evictCache(id);
-        log.info("[商品修改] id={}, name={}", id, req.getName());
+        log.info("[商品修改] id={}, fid={}, name={}", id, exist.getFid(), req.getName());
     }
 
     @Override
@@ -208,7 +217,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
         }
         removeById(id);
         evictCache(id);
-        log.info("[商品删除] id={}, name={}", id, exist.getName());
+        log.info("[商品删除] id={}, fid={}", id, exist.getFid());
     }
 
     @Override
@@ -277,13 +286,34 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
         log.debug("[商品缓存] 清除: id={}", id);
     }
 
+    @Override
+    public ProductSnapshotVO getProductSnapshot(Long id) {
+        Product product = getById(id);
+        if (product == null || product.getIsDeleted() == 1) {
+            throw new BizException(ProductErrorCode.NOT_FOUND, id);
+        }
+        if (product.getStatus() == 1) {
+            throw new BizException(ProductErrorCode.PRODUCT_OFF_SHELF);
+        }
+        ProductSnapshotVO vo = new ProductSnapshotVO();
+        vo.setId(product.getId());
+        vo.setCategoryId(product.getCategoryId());
+        vo.setName(product.getName());
+        vo.setCover(product.getCover());
+        vo.setNormPrice(product.getNormPrice());
+        vo.setRealPrice(product.getRealPrice());
+        vo.setStock(product.getStock());
+        vo.setSales(product.getSales());
+        vo.setStatus(product.getStatus());
+        return vo;
+    }
+
     // ==================== 私有 ====================
 
     private ProductVO toVO(Product product, String categoryName) {
         ProductVO vo = new ProductVO();
         BeanUtils.copyProperties(product, vo);
         vo.setCategoryName(categoryName);
-        // likeCount / dislikeCount 由评价服务维护，此处暂时填 0
         vo.setLikeCount(0);
         vo.setDislikeCount(0);
         return vo;

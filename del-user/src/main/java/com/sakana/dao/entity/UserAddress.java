@@ -1,8 +1,15 @@
 package com.sakana.dao.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+
+import java.io.Serializable;
+import java.time.LocalDateTime;
 
 /**
  * 收货地址实体
@@ -20,6 +27,7 @@ public class UserAddress extends BaseEntity {
     /**
      * 收货人
      */
+    @TableField("consignee")
     private String receiver;
 
     /**
@@ -45,6 +53,7 @@ public class UserAddress extends BaseEntity {
     /**
      * 详细地址
      */
+    @TableField("detail_address")
     private String detail;
 
     /**

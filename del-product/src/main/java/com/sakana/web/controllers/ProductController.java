@@ -1,5 +1,6 @@
 package com.sakana.web.controllers;
 
+import com.sakana.feign.vo.ProductSnapshotVO;
 import com.sakana.services.ProductService;
 import com.sakana.web.vo.ProductPageResp;
 import com.sakana.web.vo.ProductVO;
@@ -41,6 +42,12 @@ public class ProductController {
     @Operation(summary = "商品详情", description = "获取商品详细信息，带缓存")
     public R<ProductVO> getDetail(@PathVariable Long id) {
         return R.ok(productService.getDetail(id));
+    }
+
+    @GetMapping("/{id}/snapshot")
+    @Operation(summary = "商品快照（供内部服务调用）", description = "返回精简商品信息，不走缓存")
+    public R<ProductSnapshotVO> getSnapshot(@PathVariable Long id) {
+        return R.ok(productService.getProductSnapshot(id));
     }
 
     @GetMapping("/hot")

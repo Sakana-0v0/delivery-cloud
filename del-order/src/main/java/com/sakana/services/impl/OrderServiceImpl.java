@@ -1,17 +1,24 @@
 package com.sakana.services.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.sakana.dao.entity.Order;
 import com.sakana.dao.entity.OrderItem;
+import com.sakana.dao.entity.OrderOutbox;
 import com.sakana.dao.mapper.OrderItemMapper;
 import com.sakana.dao.mapper.OrderMapper;
+import com.sakana.dao.mapper.OrderOutboxMapper;
 import com.sakana.dto.request.OrderCreateReq;
 import com.sakana.dto.request.OrderItemReq;
+import com.sakana.dto.request.admin.AdminOrderListQuery;
+import com.sakana.dto.request.admin.AdminOrderStatusReq;
 import com.sakana.enums.OrderStatus;
 import com.sakana.exceptions.BizException;
 import com.sakana.services.OrderService;
+import com.sakana.web.vo.AdminOrderPageResp;
+import com.sakana.web.vo.AdminOrderVO;
 import com.sakana.web.vo.OrderItemVO;
 import com.sakana.web.vo.OrderPageResp;
 import com.sakana.web.vo.OrderVO;
@@ -27,37 +34,31 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * 订单服务实现（骨架版本）
- *
- * <p>TODO（后续阶段）：
- * <ul>
- *   <li>集成 del-product 校验库存 / 扣减库存</li>
- *   <li>集成 del-payment 完成支付流程</li>
- *   <li>订单超时自动取消（延时队列）</li>
- *   <li>集成 del-cart（购物车结算）</li>
- *   <li>分布式事务（Seata）保证订单一致性</li>
- * </ul>
+ * 订单服务实现（C 端 + B 端 + 内部）
  */
 @Service
 public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements OrderService {
 
     private static final Logger log = LoggerFactory.getLogger(OrderServiceImpl.class);
-    /** 支付超时：30 分钟 */
-    private static final long PAYMENT_TIMEOUT_MINUTES = 30L;
 
     private final OrderItemMapper orderItemMapper;
+    private final OrderOutboxMapper orderOutboxMapper;
 
-    public OrderServiceImpl(OrderItemMapper orderItemMapper) {
+    public OrderServiceImpl(OrderItemMapper orderItemMapper, OrderOutboxMapper orderOutboxMapper) {
         this.orderItemMapper = orderItemMapper;
+        this.orderOutboxMapper = orderOutboxMapper;
     }
+
+    // ==================== C 端 ====================
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public OrderVO createOrder(Long userId, OrderCreateReq req) {
-        // 1. 计算总金额并构造订单项
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<OrderItem> items = new ArrayList<>(req.getItems().size());
         for (OrderItemReq itemReq : req.getItems()) {
@@ -74,32 +75,44 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             throw new BizException(OrderErrorCode.ORDER_AMOUNT_INVALID);
         }
 
-        // 2. 创建订单主表
         Order order = new Order();
         order.setOrderNo(generateOrderNo());
         order.setUserId(userId);
         order.setTotalAmount(totalAmount);
+        order.setPayAmount(totalAmount);
         order.setStatus(OrderStatus.PENDING_PAYMENT.getCode());
         order.setReceiverName(req.getReceiverName());
         order.setReceiverPhone(req.getReceiverPhone());
         order.setReceiverAddress(req.getReceiverAddress());
         order.setRemark(req.getRemark());
-        order.setPaymentDeadline(LocalDateTime.now().plusMinutes(PAYMENT_TIMEOUT_MINUTES));
         save(order);
 
-        // 3. 批量保存订单项
         for (OrderItem item : items) {
             item.setOrderId(order.getId());
-            item.setOrderNo(order.getOrderNo());
-        }
-        for (OrderItem item : items) {
             orderItemMapper.insert(item);
         }
 
         log.info("[订单创建] userId={}, orderId={}, orderNo={}, amount={}",
                 userId, order.getId(), order.getOrderNo(), totalAmount);
 
-        // TODO: 扣减库存（集成 del-product 后实现）
+        // 写入 order_outbox（同一事务），由 OrderOutboxRelay 投递到 MQ
+        // 注意：这里需要用户信息，但 order 表没有存储用户邮箱
+        // 后续可通过 Feign 调用 del-user 获取用户邮箱，或在 OrderCreateReq 中传入
+        OrderOutbox outbox = new OrderOutbox();
+        outbox.setEventId(generateEventId());
+        outbox.setEventType("ORDER_CREATED");
+        outbox.setOrderNo(order.getOrderNo());
+        outbox.setUserId(userId);
+        outbox.setUsername(null); // TODO: 通过 Feign 获取或从请求中传入
+        outbox.setEmail(null);    // TODO: 通过 Feign 获取或从请求中传入
+        outbox.setTotalAmount(totalAmount);
+        outbox.setStatus(0); // NEW
+        outbox.setRetryCount(0);
+        outbox.setCreateTime(LocalDateTime.now());
+        outbox.setUpdateTime(LocalDateTime.now());
+        orderOutboxMapper.insert(outbox);
+
+        log.info("[订单创建] outbox 已写入: eventId={}, orderNo={}", outbox.getEventId(), order.getOrderNo());
 
         return toVO(order, items);
     }
@@ -107,13 +120,11 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @Override
     public OrderPageResp getMyOrders(Long userId, Integer status, Integer page, Integer size) {
         Page<Order> pageParam = new Page<>(page, size);
-
         LambdaQueryWrapper<Order> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Order::getUserId, userId)
-               .eq(status != null, Order::getStatus, status);
-
+                .eq(status != null, Order::getStatus, status);
         Page<Order> pageResult = page(pageParam, wrapper);
-        // 批量加载订单项
+
         List<Long> orderIds = pageResult.getRecords().stream()
                 .map(Order::getId).collect(Collectors.toList());
         Map<Long, List<OrderItem>> itemMap = loadItemsByOrderIds(orderIds);
@@ -139,8 +150,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         }
 
         List<OrderItem> items = orderItemMapper.selectList(
-                new LambdaQueryWrapper<OrderItem>()
-                        .eq(OrderItem::getOrderId, orderId));
+                new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, orderId));
         return toVO(order, items);
     }
 
@@ -155,15 +165,12 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             throw new BizException(OrderErrorCode.ORDER_NOT_OWN);
         }
         if (order.getStatus() != OrderStatus.PENDING_PAYMENT.getCode()) {
-            throw new BizException(OrderErrorCode.ORDER_STATUS_INVALID);
+            throw new BizException(OrderErrorCode.ORDER_STATUS_INVALID, "只有待支付状态可以取消");
         }
         order.setStatus(OrderStatus.CANCELLED.getCode());
         order.setCancelTime(LocalDateTime.now());
         updateById(order);
-
-        // TODO: 回滚库存（集成 del-product 后实现）
-
-        log.info("[订单取消] userId={}, orderId={}", userId, orderId);
+        log.info("[用户取消订单] userId={}, orderId={}, orderNo={}", userId, orderId, order.getOrderNo());
     }
 
     @Override
@@ -177,22 +184,142 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             throw new BizException(OrderErrorCode.ORDER_NOT_OWN);
         }
         if (order.getStatus() != OrderStatus.SHIPPING.getCode()) {
-            throw new BizException(OrderErrorCode.ORDER_STATUS_INVALID);
+            throw new BizException(OrderErrorCode.ORDER_STATUS_INVALID, "只有配送中状态可以确认收货");
         }
         order.setStatus(OrderStatus.COMPLETED.getCode());
         order.setCompleteTime(LocalDateTime.now());
         updateById(order);
-
-        log.info("[确认收货] userId={}, orderId={}", userId, orderId);
+        log.info("[用户确认收货] userId={}, orderId={}, orderNo={}", userId, orderId, order.getOrderNo());
     }
 
-    // ==================== 私有方法 ====================
+    // ==================== B 端（管理后台） ====================
+
+    @Override
+    public AdminOrderPageResp adminGetPage(AdminOrderListQuery query) {
+        int page = query.getPage() == null ? 1 : query.getPage();
+        int size = query.getSize() == null ? 10 : query.getSize();
+
+        Page<Order> pageParam = new Page<>(page, size);
+
+        LambdaQueryWrapper<Order> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Order::getIsDeleted, 0)
+               .orderByDesc(Order::getCreateTime);
+        if (query.getStatus() != null) {
+            wrapper.eq(Order::getStatus, query.getStatus());
+        }
+        
+
+        Page<Order> pageResult = page(pageParam, wrapper);
+
+        List<Long> orderIds = pageResult.getRecords().stream()
+                .map(Order::getId).collect(Collectors.toList());
+        Map<Long, List<OrderItem>> itemMap = loadItemsByOrderIds(orderIds);
+
+        AdminOrderPageResp resp = new AdminOrderPageResp();
+        resp.setTotal(pageResult.getTotal());
+        resp.setPage((long) pageResult.getCurrent());
+        resp.setSize((long) pageResult.getSize());
+        resp.setRecords(pageResult.getRecords().stream()
+                .map(o -> toAdminVO(o, null, itemMap.getOrDefault(o.getId(), Collections.emptyList())))
+                .collect(Collectors.toList()));
+        return resp;
+    }
+
+    @Override
+    public AdminOrderVO adminGetDetail(Long orderId) {
+        Order order = getById(orderId);
+        if (order == null || order.getIsDeleted() == 1) {
+            throw new BizException(OrderErrorCode.ORDER_NOT_FOUND);
+        }
+        List<OrderItem> items = orderItemMapper.selectList(
+                new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, orderId));
+        return toAdminVO(order, null, items);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void adminChangeStatus(Long orderId, AdminOrderStatusReq req, Long adminId, String adminName) {
+        Order order = getById(orderId);
+        if (order == null || order.getIsDeleted() == 1) {
+            throw new BizException(OrderErrorCode.ORDER_NOT_FOUND);
+        }
+
+        Integer fromStatus = order.getStatus();
+        Integer toStatus = req.getStatus();
+
+        // 状态机校验：基于合法流转表（与单体一致）
+        if (!isValidAdminTransition(fromStatus, toStatus)) {
+            log.warn("[管理员改状态-非法跳转] adminId={}({}), orderId={}, orderNo={}, from={}, to={}, reason={}",
+                    adminId, adminName, orderId, order.getOrderNo(), fromStatus, toStatus, req.getRemark());
+            throw new BizException(OrderErrorCode.ORDER_STATUS_INVALID,
+                    "非法状态流转: " + fromStatus + " → " + toStatus);
+        }
+
+        if (fromStatus.equals(toStatus)) {
+            log.info("[管理员改状态-无操作] adminId={}, orderId={}, status={}", adminId, orderId, fromStatus);
+            return;
+        }
+
+        order.setStatus(toStatus);
+        switch (toStatus) {
+            case 2 -> order.setPayTime(LocalDateTime.now());
+            case 3 -> order.setShipTime(LocalDateTime.now());
+            case 4 -> order.setCompleteTime(LocalDateTime.now());
+            case 5 -> order.setCancelTime(LocalDateTime.now());
+            default -> { /* no-op */ }
+        }
+        updateById(order);
+
+        log.info("[管理员改状态-成功] adminId={}({}), orderId={}, orderNo={}, from={} → to={}, reason={}",
+                adminId, adminName, orderId, order.getOrderNo(), fromStatus, toStatus, req.getRemark());
+    }
+
+    /**
+     * 合法状态流转表（管理员操作）
+     */
+    private static final Map<Integer, Set<Integer>> ADMIN_TRANSITIONS = Map.of(
+            1, Set.of(2, 5),
+            2, Set.of(3, 5),
+            3, Set.of(4, 5)
+    );
+
+    private boolean isValidAdminTransition(Integer from, Integer to) {
+        if (from == null || to == null) return false;
+        Set<Integer> allowed = ADMIN_TRANSITIONS.get(from);
+        return allowed != null && allowed.contains(to);
+    }
+
+    // ==================== 内部 / 兼容 ====================
+
+    @Override
+    @Deprecated
+    public void markPaid(Long orderId, String paymentNo) {
+        Order order = getById(orderId);
+        if (order == null || order.getIsDeleted() == 1) {
+            log.warn("[markPaid] 订单不存在 orderId={}", orderId);
+            return;
+        }
+        if (order.getStatus() != null && order.getStatus() == OrderStatus.PAID.getCode()) {
+            log.info("[markPaid] 订单已是 PAID，跳过 orderId={}", orderId);
+            return;
+        }
+        order.setStatus(OrderStatus.PAID.getCode());
+        order.setPayTime(LocalDateTime.now());
+        updateById(order);
+        log.info("[markPaid] 订单状态已更新: orderId={} -> PAID, paymentNo={}", orderId, paymentNo);
+    }
+
+    // ==================== 私有 ====================
 
     private String generateOrderNo() {
         String timestamp = LocalDateTime.now().format(
                 java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
         int random = (int) (Math.random() * 10000);
         return "ORD" + timestamp + String.format("%04d", random);
+    }
+
+    private String generateEventId() {
+        return UUID.randomUUID().toString().replace("-", "");
     }
 
     private Map<Long, List<OrderItem>> loadItemsByOrderIds(List<Long> orderIds) {
@@ -218,5 +345,21 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         vo.setItems(itemVOs);
         return vo;
     }
-}
 
+    private AdminOrderVO toAdminVO(Order order, String username, List<OrderItem> items) {
+        AdminOrderVO vo = new AdminOrderVO();
+        BeanUtils.copyProperties(order, vo);
+        vo.setStatusDesc(OrderStatus.fromCode(order.getStatus()).getDesc());
+        // username 留空，由 del-user 内部接口 /internal/users/{id}/contact 补全（解耦）
+        vo.setUsername(username);
+
+        List<OrderItemVO> itemVOs = new ArrayList<>();
+        for (OrderItem item : items) {
+            OrderItemVO itemVO = new OrderItemVO();
+            BeanUtils.copyProperties(item, itemVO);
+            itemVOs.add(itemVO);
+        }
+        vo.setItems(itemVOs);
+        return vo;
+    }
+}

@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 订单接口（C 端）
  */
 @RestController
-@RequestMapping("/api/v1/orders")
+@RequestMapping("/api/v1/user/orders")
 @RequiredArgsConstructor
 @Tag(name = "订单", description = "创建、查询、取消、确认收货")
 public class OrderController {
@@ -71,3 +71,4 @@ public class OrderController {
         return R.ok();
     }
 }
+

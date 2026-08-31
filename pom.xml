@@ -1,4 +1,6 @@
-<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
@@ -11,15 +13,15 @@
     <url>http://maven.apache.org</url>
     <modules>
         <module>del-common</module>
-        <module>del-comment</module>
         <module>del-order</module>
+        <module>del-admin</module>
         <module>del-payment</module>
         <module>del-user</module>
-        <module>del-IdGenerator</module>
+        <module>del-stats</module>
+        <module>del-message</module>
         <module>del-product</module>
-        <module>dei-gateway</module>
-        <module>del-admin</module>
-    </modules>
+        <module>del-gateway</module>
+        </modules>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -38,13 +40,11 @@
         <spring-boot-version>3.2.12</spring-boot-version>
         <module.version>1.0-SNAPSHOT</module.version>
         <jackson.version>2.15.3</jackson.version>
-
-
+        <junit.version>4.13.2</junit.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
-            <!-- 这是spring boot的版本依赖包-->
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
@@ -52,8 +52,6 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-
-            <!-- 这是spring cloud的子项目版本依赖包-->
             <dependency>
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>
@@ -61,8 +59,6 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-
-            <!-- 这是spring cloud alibaba的子项目版本依赖包     -->
             <dependency>
                 <groupId>com.alibaba.cloud</groupId>
                 <artifactId>spring-cloud-alibaba-dependencies</artifactId>
@@ -70,111 +66,100 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-
-
-
-            <!-- Caffeine 本地缓存 -->
             <dependency>
                 <groupId>com.github.ben-manes.caffeine</groupId>
                 <artifactId>caffeine</artifactId>
                 <version>${caffeine.version}</version>
             </dependency>
-
-
-
-            <!-- MyBatis Plus（社区 Starter） -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>dynamic-datasource-spring-boot3-starter</artifactId>
+                <version>4.3.0</version>
+            </dependency>
             <dependency>
                 <groupId>com.baomidou</groupId>
                 <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
                 <version>${mybatis-plus.version}</version>
             </dependency>
-
-            <!-- JWT（自封装） -->
+            <dependency>
+                <groupId>com.sakana</groupId>
+                <artifactId>del-product</artifactId>
+                <version>${module.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.sakana</groupId>
+                <artifactId>del-admin</artifactId>
+                <version>${module.version}</version>
+            </dependency>
             <dependency>
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-api</artifactId>
                 <version>${jjwt.version}</version>
             </dependency>
-
             <dependency>
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-impl</artifactId>
                 <version>${jjwt.version}</version>
                 <scope>runtime</scope>
             </dependency>
-
             <dependency>
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-jackson</artifactId>
                 <version>${jjwt.version}</version>
                 <scope>runtime</scope>
             </dependency>
-
-            <!-- 支付宝（自封装） -->
             <dependency>
                 <groupId>com.alipay.sdk</groupId>
                 <artifactId>alipay-sdk-java</artifactId>
                 <version>${alipay.version}</version>
             </dependency>
-
-            <!-- API 文档 -->
             <dependency>
                 <groupId>org.springdoc</groupId>
                 <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                 <version>${springdoc.version}</version>
             </dependency>
-
-            <!-- nacos 配置中心 -->
             <dependency>
                 <groupId>com.alibaba.cloud</groupId>
                 <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
                 <version>${spring-cloud-alibaba.version}</version>
             </dependency>
-
-
-            <dependency>
-            <groupId>com.sakana</groupId>
-            <artifactId>del-common</artifactId>
-            <version>${module.version}</version>
-            </dependency>
-
             <dependency>
                 <groupId>com.sakana</groupId>
-                <artifactId>del-product</artifactId>
+                <artifactId>del-common</artifactId>
                 <version>${module.version}</version>
             </dependency>
-
-            <!-- Lombok（provided，不打入最终 jar） -->
+            <dependency>
+                <groupId>com.sakana</groupId>
+                <artifactId>del-stats</artifactId>
+                <version>${module.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.sakana</groupId>
+                <artifactId>del-message</artifactId>
+                <version>${module.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.projectlombok</groupId>
                 <artifactId>lombok</artifactId>
                 <version>${lombok.version}</version>
                 <scope>provided</scope>
             </dependency>
-
-            <!-- 数据库驱动 -->
             <dependency>
                 <groupId>com.mysql</groupId>
                 <artifactId>mysql-connector-j</artifactId>
                 <version>${mysql.version}</version>
                 <scope>runtime</scope>
             </dependency>
-
-            <!-- 通用工具 -->
             <dependency>
                 <groupId>cn.hutool</groupId>
                 <artifactId>hutool-all</artifactId>
                 <version>${hutool.version}</version>
             </dependency>
-
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
                 <artifactId>jackson-annotations</artifactId>
                 <version>${jackson.version}</version>
             </dependency>
-
-
-
         </dependencies>
     </dependencyManagement>
 
@@ -187,6 +172,8 @@
                 <configuration>
                     <source>17</source>
                     <target>17</target>
+                    <!-- 关键：保留参数名，让 @PathVariable / @RequestParam 能通过反射获取参数名 -->
+                    <parameters>true</parameters>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
@@ -194,8 +181,21 @@
                             <version>${lombok.version}</version>
                         </path>
                     </annotationProcessorPaths>
+                    <compilerArgs>
+                        <arg>-parameters</arg>
+                    </compilerArgs>
                 </configuration>
             </plugin>
         </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot-version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    
     </build>
-</project>
+    </project>

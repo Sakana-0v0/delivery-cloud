@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 /**
  * C 端用户登录认证
  * <p>
- * 从 t_user 表加载用户信息，返回自定义 LoginUser（含 userId）。
+ * 从 t_user 表加载用户信息，返回自定义 AuthLoginUser（含 userId / password）。
  */
 @Slf4j
 @Service
@@ -44,7 +44,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
         log.debug("[登录] 用户加载成功: userId={}, username={}", user.getId(), user.getUsername());
 
-        return new LoginUser(
+        return new AuthLoginUser(
                 user.getId(),
                 user.getUsername(),
                 user.getNickname() != null ? user.getNickname() : user.getUsername(),
