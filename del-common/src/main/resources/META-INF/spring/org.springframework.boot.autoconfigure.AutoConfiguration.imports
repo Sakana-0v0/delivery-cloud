@@ -1,0 +1,2 @@
+com.sakana.configs.JwtAutoConfiguration
+com.sakana.configs.MybatisPlusAutoConfiguration

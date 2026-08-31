@@ -1,0 +1,35 @@
+server:
+  port: 10003
+
+spring:
+  application:
+    name: del-user
+  profiles:
+    active: dev
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+        namespace: sakana
+      config:
+        server-addr: 127.0.0.1:8848
+        namespace: sakana
+        group: DEFAULT_GROUP
+        file-extension: yml
+  config:
+    import:
+      - optional:nacos:common-jwt.yml
+      - optional:nacos:common-jackson.yml
+      - optional:nacos:common-redis.yml
+      - optional:nacos:common-amqp.yml
+      - optional:nacos:common-mybatis.yml
+      - optional:nacos:common-actuator.yml
+      - optional:nacos:common-swagger.yml
+      - optional:nacos:del-user.yml
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
