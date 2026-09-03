@@ -5,6 +5,7 @@ import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.FanoutExchange;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.support.converter.SimpleMessageConverter;
@@ -14,10 +15,11 @@ import org.springframework.context.annotation.Configuration;
 /**
  * del-message 侧的 RabbitMQ 拓扑配置。
  * <p>
- * 声明三个队列：
+ * 声明四个队列：
  * - del-message.user.event: 绑定到 user.event.exchange，接收用户事件（登录、注册）
  * - del-message.order.event: 绑定到 order.event.exchange，接收订单创建事件
  * - del-message.order.paid: 绑定到 payment.order.paid.exchange，接收订单支付成功事件
+ * - del-message.email.send: 绑定到 user.message.exchange (routingKey=email.send)，接收邮件发送事件
  */
 @Configuration
 public class RabbitMQConfig {
@@ -33,6 +35,9 @@ public class RabbitMQConfig {
     /** 支付成功事件 fanout 交换机（与 del-payment 保持一致） */
     public static final String PAID_EXCHANGE = "payment.order.paid.exchange";
 
+    /** 用户消息 topic 交换机（与 del-user 保持一致） */
+    public static final String USER_MESSAGE_EXCHANGE = "user.message.exchange";
+
     // ==================== Queue 常量 ====================
 
     /** del-message 专用的用户事件队列 */
@@ -44,13 +49,21 @@ public class RabbitMQConfig {
     /** del-message 专用的订单支付成功事件队列 */
     public static final String ORDER_PAID_QUEUE = "del-message.order.paid";
 
+    /** del-message 专用的邮件发送事件队列 */
+    public static final String EMAIL_SEND_QUEUE = "del-message.email.send";
+
     // ==================== MessageConverter ====================
 
     @Bean
     public SimpleMessageConverter userMessageConverter() {
         SimpleMessageConverter converter = new SimpleMessageConverter();
-        // 允许反序列化 com.sakana.events 包下的所有事件
-        converter.addAllowedListPatterns("com.sakana.events.*");
+        // 允许反序列化业务事件和 JDK 集合类（HashMap 等）
+        converter.addAllowedListPatterns(
+            "com.sakana.events.*",
+            "java.util.*",
+            "java.lang.*",
+            "java.time.*"
+        );
         return converter;
     }
 
@@ -116,5 +129,32 @@ public class RabbitMQConfig {
     @Bean
     public Binding orderPaidBinding(Queue orderPaidQueue, FanoutExchange paidExchange) {
         return BindingBuilder.bind(orderPaidQueue).to(paidExchange);
+    }
+
+    // ==================== 邮件发送事件相关 ====================
+
+    /**
+     * 用户消息 topic 交换机
+     * <p>
+     * del-user 发布邮件事件，本服务订阅消费。
+     * routing key = "email.send"
+     */
+    @Bean
+    public TopicExchange userMessageExchange() {
+        return new TopicExchange(USER_MESSAGE_EXCHANGE, true, false);
+    }
+
+    @Bean
+    public Queue emailSendQueue() {
+        return new Queue(EMAIL_SEND_QUEUE, true);
+    }
+
+    /**
+     * 邮件发送队列绑定到 user.message.exchange
+     * 使用 routing key "email.send" 精确匹配
+     */
+    @Bean
+    public Binding emailSendBinding(Queue emailSendQueue, TopicExchange userMessageExchange) {
+        return BindingBuilder.bind(emailSendQueue).to(userMessageExchange).with("email.send");
     }
 }

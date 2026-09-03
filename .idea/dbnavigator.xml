@@ -24,6 +24,12 @@
       <model-selection />
     </selection-state>
   </component>
+  <component name="DBNavigator.Project.DatabaseBrowserManager">
+    <autoscroll-to-editor value="false" />
+    <autoscroll-from-editor value="true" />
+    <show-object-properties value="true" />
+    <loaded-nodes />
+  </component>
   <component name="DBNavigator.Project.DatabaseConsoleManager">
     <connection id="83484224-d8ec-4986-b1a4-15529bc4bdd9">
       <console name="Connection" type="STANDARD" schema="del_user_db" session="Main" />
@@ -41,13 +47,21 @@
   <component name="DBNavigator.Project.DatabaseSessionManager">
     <connection id="83484224-d8ec-4986-b1a4-15529bc4bdd9" />
   </component>
+  <component name="DBNavigator.Project.ExecutionManager">
+    <retain-sticky-names value="false" />
+  </component>
   <component name="DBNavigator.Project.FileConnectionMappingManager">
     <mapping file-url="file://$PROJECT_DIR$/scripts/outbox_tables.sql" connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" session-id="MAIN" current-schema="del_user_db" />
-    <mapping file-url="file://$APPLICATION_CONFIG_DIR$/consoles/db/69adff5d-8c34-468a-8373-e280cdb3759d/console.sql" connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" session-id="MAIN" current-schema="del_user_db" />
+    <mapping file-url="file://$APPLICATION_CONFIG_DIR$/consoles/db/69adff5d-8c34-468a-8373-e280cdb3759d/console_5.sql" connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" session-id="MAIN" current-schema="del_user_db" />
+    <mapping file-url="file://$APPLICATION_CONFIG_DIR$/consoles/db/69adff5d-8c34-468a-8373-e280cdb3759d/console_6.sql" connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" session-id="MAIN" current-schema="del_user_db" />
+    <mapping file-url="file://$PROJECT_DIR$/docs/cleanup_and_seed.sql" connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" session-id="MAIN" current-schema="del_user_db" />
   </component>
   <component name="DBNavigator.Project.ObjectQuickFilterManager">
     <last-used-operator value="EQUAL" />
     <filters />
+  </component>
+  <component name="DBNavigator.Project.ScriptExecutionManager" clear-outputs="true">
+    <recently-used-interfaces />
   </component>
   <component name="DBNavigator.Project.Settings">
     <states>

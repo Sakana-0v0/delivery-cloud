@@ -27,7 +27,7 @@ public class UserAddress extends BaseEntity {
     /**
      * 收货人
      */
-    @TableField("consignee")
+    @TableField("receiver")
     private String receiver;
 
     /**
@@ -53,7 +53,7 @@ public class UserAddress extends BaseEntity {
     /**
      * 详细地址
      */
-    @TableField("detail_address")
+    @TableField("detail")
     private String detail;
 
     /**
@@ -61,3 +61,4 @@ public class UserAddress extends BaseEntity {
      */
     private Integer isDefault;
 }
+

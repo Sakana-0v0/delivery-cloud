@@ -15,11 +15,12 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * user_event_outbox 扫描器：定时把状态为 NEW 的行投递到 RabbitMQ，标 SENT。
- * <p>
+ *
  * 失败处理：增加 retryCount + 记录 lastError，保留为 NEW 留给下一轮重试。
  * 建议：超过一定阈值（如 10 次）则标记 DLQ，由运维介入。
  */
@@ -56,46 +57,57 @@ public class UserEventOutboxRelay {
 
         for (UserEventOutbox o : pending) {
             try {
+                Map<String, Object> data = o.getPayload();
+                if (data == null) {
+                    log.error("[user-outbox-relay] eventId={} payload 为空，跳过", o.getId());
+                    o.setStatus(UserOutboxStatus.DLQ.code());
+                    o.setLastError("payload is null");
+                    outboxMapper.updateById(o);
+                    continue;
+                }
+
+                String eventId = (String) data.get("eventId");
+                Long userId = (Long) data.get("userId");
+                String username = (String) data.get("username");
+                String email = (String) data.get("email");
+                String ip = (String) data.get("ip");
+
                 if ("REGISTER".equals(o.getEventType())) {
                     RegisterEventPayload payload = RegisterEventPayload.builder()
-                            .eventId(o.getEventId())
-                            .userId(o.getUserId())
-                            .username(o.getUsername())
-                            .email(o.getEmail())
+                            .eventId(eventId)
+                            .userId(userId)
+                            .username(username)
+                            .email(email)
                             .registerTime(o.getCreateTime())
                             .occurredAt(LocalDateTime.now())
                             .build();
                     rabbitTemplate.convertAndSend(USER_EVENT_EXCHANGE, null, payload);
                 } else if ("LOGIN".equals(o.getEventType())) {
                     LoginEventPayload payload = LoginEventPayload.builder()
-                            .eventId(o.getEventId())
-                            .userId(o.getUserId())
-                            .username(o.getUsername())
-                            .email(o.getEmail())
+                            .eventId(eventId)
+                            .userId(userId)
+                            .username(username)
+                            .email(email)
                             .loginTime(o.getCreateTime())
-                            .ip(o.getIp())
+                            .ip(ip)
                             .occurredAt(LocalDateTime.now())
                             .build();
                     rabbitTemplate.convertAndSend(USER_EVENT_EXCHANGE, null, payload);
                 }
                 o.setStatus(UserOutboxStatus.SENT.code());
                 outboxMapper.updateById(o);
-                log.info("[user-outbox-relay] eventId={} userId={} -> MQ 已投递",
-                        o.getEventId(), o.getUserId());
+                log.info("[user-outbox-relay] eventId={} userId={} -> MQ 已投递", eventId, userId);
             } catch (Exception e) {
                 int retry = (o.getRetryCount() == null ? 0 : o.getRetryCount()) + 1;
                 o.setRetryCount(retry);
                 o.setLastError(e.toString());
                 outboxMapper.updateById(o);
                 log.error("[user-outbox-relay] 投递失败 eventId={} retry={} err={}",
-                        o.getEventId(), retry, e.toString());
+                        o.getId(), retry, e.toString());
             }
         }
     }
 
-    /**
-     * 生成事件ID（供 Service 层在事务内调用）
-     */
     public static String generateEventId() {
         return UUID.randomUUID().toString().replace("-", "");
     }

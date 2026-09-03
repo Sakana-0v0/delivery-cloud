@@ -5,6 +5,7 @@ import com.sakana.feign.ProductStatsClient;
 import com.sakana.feign.UserStatsClient;
 import com.sakana.services.StatsService;
 import com.sakana.web.vo.HotProductVO;
+import com.sakana.web.vo.R;
 import com.sakana.web.vo.SalesTrendResp;
 import com.sakana.web.vo.SalesTrendVO;
 import com.sakana.web.vo.StatsOverviewVO;
@@ -40,9 +41,15 @@ public class StatsServiceImpl implements StatsService {
         
         try {
             // 调用 del-order 获取今日订单统计
-            com.sakana.feign.dto.OrderStatsDTO orderStats = orderStatsClient.getTodayStats();
-            vo.setTodayOrderCount(orderStats.getTodayOrderCount());
-            vo.setTodaySalesAmount(orderStats.getTodaySalesAmount());
+            R<com.sakana.feign.dto.OrderStatsDTO> orderStatsR = orderStatsClient.getTodayStats();
+            com.sakana.feign.dto.OrderStatsDTO orderStats = orderStatsR != null ? orderStatsR.getData() : null;
+            if (orderStats != null) {
+                vo.setTodayOrderCount(orderStats.getTodayOrderCount());
+                vo.setTodaySalesAmount(orderStats.getTodaySalesAmount());
+            } else {
+                vo.setTodayOrderCount(0L);
+                vo.setTodaySalesAmount(BigDecimal.ZERO);
+            }
         } catch (Exception e) {
             log.error("[StatsService] Failed to fetch order stats: {}", e.getMessage());
             vo.setTodayOrderCount(0L);
@@ -51,9 +58,15 @@ public class StatsServiceImpl implements StatsService {
         
         try {
             // 调用 del-user 获取用户统计
-            com.sakana.feign.dto.UserStatsDTO userStats = userStatsClient.getUserStats();
-            vo.setTotalUserCount(userStats.getTotalUserCount());
-            vo.setTodayNewUserCount(userStats.getTodayNewUserCount());
+            R<com.sakana.feign.dto.UserStatsDTO> userStatsR = userStatsClient.getUserStats();
+            com.sakana.feign.dto.UserStatsDTO userStats = userStatsR != null ? userStatsR.getData() : null;
+            if (userStats != null) {
+                vo.setTotalUserCount(userStats.getTotalUserCount());
+                vo.setTodayNewUserCount(userStats.getTodayNewUserCount());
+            } else {
+                vo.setTotalUserCount(0L);
+                vo.setTodayNewUserCount(0L);
+            }
         } catch (Exception e) {
             log.error("[StatsService] Failed to fetch user stats: {}", e.getMessage());
             vo.setTotalUserCount(0L);
@@ -72,13 +85,15 @@ public class StatsServiceImpl implements StatsService {
         
         try {
             // 调用 del-order 获取销售趋势
-            com.sakana.feign.dto.SalesTrendDTO trendDTO = orderStatsClient.getSalesTrend(granularity, startDate, endDate);
+            R<com.sakana.feign.dto.SalesTrendDTO> trendR = orderStatsClient.getSalesTrend(granularity, startDate, endDate);
+            com.sakana.feign.dto.SalesTrendDTO trendDTO = trendR != null ? trendR.getData() : null;
             
             SalesTrendResp resp = new SalesTrendResp();
-            resp.setGranularity(trendDTO.getGranularity());
-            
-            // 转换数据点
-            List<SalesTrendVO> points = trendDTO.getPoints().stream()
+            if (trendDTO != null && trendDTO.getPoints() != null) {
+                resp.setGranularity(trendDTO.getGranularity());
+                
+                // 转换数据点
+                List<SalesTrendVO> points = trendDTO.getPoints().stream()
                     .map(point -> {
                         SalesTrendVO vo = new SalesTrendVO();
                         vo.setDateKey(point.getDate());
@@ -87,7 +102,11 @@ public class StatsServiceImpl implements StatsService {
                         return vo;
                     })
                     .collect(Collectors.toList());
-            resp.setPoints(points);
+                resp.setPoints(points);
+            } else {
+                resp.setGranularity(granularity == null ? "day" : granularity);
+                resp.setPoints(Collections.emptyList());
+            }
             
             return resp;
         } catch (Exception e) {
@@ -105,7 +124,12 @@ public class StatsServiceImpl implements StatsService {
         
         try {
             // 调用 del-product 获取热卖商品
-            List<com.sakana.feign.dto.HotProductVO> feignProducts = productStatsClient.getHotProducts(limit);
+            R<List<com.sakana.feign.dto.HotProductVO>> hotProductsR = productStatsClient.getHotProducts(limit);
+            List<com.sakana.feign.dto.HotProductVO> feignProducts = hotProductsR != null ? hotProductsR.getData() : null;
+            
+            if (feignProducts == null) {
+                return Collections.emptyList();
+            }
             
             // 转换为 del-stats 的 VO
             return feignProducts.stream()
@@ -115,6 +139,7 @@ public class StatsServiceImpl implements StatsService {
                         vo.setName(feignVo.getProductName());
                         vo.setCover(feignVo.getCover());
                         vo.setSales(feignVo.getSales());
+                        vo.setRealPrice(feignVo.getRealPrice());
                         return vo;
                     })
                     .collect(Collectors.toList());

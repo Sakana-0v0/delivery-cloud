@@ -1,0 +1,15 @@
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    tags-sorter: alpha
+    operations-sorter: alpha
+  packages-to-scan: com.sakana.web.controllers
+  default-produces-media-type: application/json
+
+spring:
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher

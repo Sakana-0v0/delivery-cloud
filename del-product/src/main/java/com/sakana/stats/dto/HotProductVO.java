@@ -10,23 +10,9 @@ import java.math.BigDecimal;
 @Data
 public class HotProductVO {
 
-    /**
-     * 商品ID
-     */
     private Long productId;
-
-    /**
-     * 商品名称
-     */
     private String productName;
-
-    /**
-     * 商品封面图
-     */
     private String cover;
-
-    /**
-     * 销量
-     */
     private Integer sales;
+    private BigDecimal realPrice;
 }

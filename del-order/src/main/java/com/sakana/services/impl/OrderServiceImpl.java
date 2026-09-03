@@ -16,12 +16,18 @@ import com.sakana.dto.request.admin.AdminOrderListQuery;
 import com.sakana.dto.request.admin.AdminOrderStatusReq;
 import com.sakana.enums.OrderStatus;
 import com.sakana.exceptions.BizException;
+import com.sakana.feign.ProductFeignClient;
+import com.sakana.feign.UserFeignClient;
+import com.sakana.feign.vo.ProductSnapshotVO;
+import com.sakana.feign.vo.UserContactVO;
+import com.sakana.web.vo.R;
 import com.sakana.services.OrderService;
 import com.sakana.web.vo.AdminOrderPageResp;
 import com.sakana.web.vo.AdminOrderVO;
 import com.sakana.web.vo.OrderItemVO;
 import com.sakana.web.vo.OrderPageResp;
 import com.sakana.web.vo.OrderVO;
+import com.sakana.web.vo.UserAddressVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
@@ -48,10 +54,17 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
     private final OrderItemMapper orderItemMapper;
     private final OrderOutboxMapper orderOutboxMapper;
+    private final UserFeignClient userFeignClient;
+    private final ProductFeignClient productFeignClient;
 
-    public OrderServiceImpl(OrderItemMapper orderItemMapper, OrderOutboxMapper orderOutboxMapper) {
+    public OrderServiceImpl(OrderItemMapper orderItemMapper,
+                            OrderOutboxMapper orderOutboxMapper,
+                            UserFeignClient userFeignClient,
+                            ProductFeignClient productFeignClient) {
         this.orderItemMapper = orderItemMapper;
         this.orderOutboxMapper = orderOutboxMapper;
+        this.userFeignClient = userFeignClient;
+        this.productFeignClient = productFeignClient;
     }
 
     // ==================== C 端 ====================
@@ -62,6 +75,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         BigDecimal totalAmount = BigDecimal.ZERO;
         List<OrderItem> items = new ArrayList<>(req.getItems().size());
         for (OrderItemReq itemReq : req.getItems()) {
+            // 自动补全商品快照（如果前端未传递 productName/productPrice/productCover）
+            fillProductSnapshot(itemReq);
+
             BigDecimal subtotal = itemReq.getProductPrice().multiply(BigDecimal.valueOf(itemReq.getQuantity()));
             totalAmount = totalAmount.add(subtotal);
 
@@ -75,15 +91,43 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             throw new BizException(OrderErrorCode.ORDER_AMOUNT_INVALID);
         }
 
+        // 如果提供了 addressId，优先通过 Feign 调用获取地址信息
+        String receiverName = req.getReceiverName();
+        String receiverPhone = req.getReceiverPhone();
+        String receiverAddress = req.getReceiverAddress();
+
+        if (req.getAddressId() != null) {
+            var response = userFeignClient.getAddressById(req.getAddressId());
+            if (response != null && response.getData() != null) {
+                UserAddressVO address = response.getData();
+                receiverName = address.getReceiver();
+                receiverPhone = address.getPhone();
+                receiverAddress = address.getFullAddress();
+                log.info("[订单创建-地址获取] addressId={}, receiver={}, phone={}, address={}",
+                        req.getAddressId(), receiverName, receiverPhone, receiverAddress);
+            } else {
+                log.warn("[订单创建-地址未获取] addressId={}, response={}", req.getAddressId(), response);
+            }
+        }
+
+        // 收货人信息必须完整
+        if (receiverName == null || receiverName.isEmpty()
+                || receiverPhone == null || receiverPhone.isEmpty()
+                || receiverAddress == null || receiverAddress.isEmpty()) {
+            log.warn("[订单创建-收货人信息不全] addressId={}, name={}, phone={}, addr={}",
+                    req.getAddressId(), receiverName, receiverPhone, receiverAddress);
+            throw new BizException(OrderErrorCode.ORDER_AMOUNT_INVALID, "收货人信息不完整，请提供 addressId 或完整填写收货人信息");
+        }
+
         Order order = new Order();
         order.setOrderNo(generateOrderNo());
         order.setUserId(userId);
         order.setTotalAmount(totalAmount);
         order.setPayAmount(totalAmount);
         order.setStatus(OrderStatus.PENDING_PAYMENT.getCode());
-        order.setReceiverName(req.getReceiverName());
-        order.setReceiverPhone(req.getReceiverPhone());
-        order.setReceiverAddress(req.getReceiverAddress());
+        order.setReceiverName(receiverName);
+        order.setReceiverPhone(receiverPhone);
+        order.setReceiverAddress(receiverAddress);
         order.setRemark(req.getRemark());
         save(order);
 
@@ -103,8 +147,23 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         outbox.setEventType("ORDER_CREATED");
         outbox.setOrderNo(order.getOrderNo());
         outbox.setUserId(userId);
-        outbox.setUsername(null); // TODO: 通过 Feign 获取或从请求中传入
-        outbox.setEmail(null);    // TODO: 通过 Feign 获取或从请求中传入
+
+        // Get user contact info for outbox event
+        String username = "unknown";
+        String email = null;
+        try {
+            var contactResp = userFeignClient.getUserContact(userId);
+            if (contactResp != null && contactResp.getData() != null) {
+                UserContactVO contact = contactResp.getData();
+                username = contact.getUsername() != null ? contact.getUsername() : "unknown";
+                email = contact.getEmail();
+            }
+        } catch (Exception e) {
+            log.warn("[order-create-user-contact-fail] userId={}, error={}", userId, e.getMessage());
+        }
+
+        outbox.setUsername(username);
+        outbox.setEmail(email);    // TODO: 通过 Feign 获取或从请求中传入
         outbox.setTotalAmount(totalAmount);
         outbox.setStatus(0); // NEW
         outbox.setRetryCount(0);
@@ -121,21 +180,25 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     public OrderPageResp getMyOrders(Long userId, Integer status, Integer page, Integer size) {
         Page<Order> pageParam = new Page<>(page, size);
         LambdaQueryWrapper<Order> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Order::getUserId, userId)
-                .eq(status != null, Order::getStatus, status);
+        wrapper.eq(Order::getUserId, userId).eq(Order::getIsDeleted, 0);
+        if (status != null) wrapper.eq(Order::getStatus, status);
+        wrapper.orderByDesc(Order::getCreateTime);
         Page<Order> pageResult = page(pageParam, wrapper);
 
-        List<Long> orderIds = pageResult.getRecords().stream()
-                .map(Order::getId).collect(Collectors.toList());
-        Map<Long, List<OrderItem>> itemMap = loadItemsByOrderIds(orderIds);
+        List<Long> orderIds = pageResult.getRecords().stream().map(Order::getId).collect(Collectors.toList());
+        Map<Long, List<OrderItem>> itemsMap = loadItemsByOrderIds(orderIds);
+
+        List<OrderVO> records = new ArrayList<>();
+        for (Order order : pageResult.getRecords()) {
+            List<OrderItem> orderItems = itemsMap.getOrDefault(order.getId(), List.of());
+            records.add(toVO(order, orderItems));
+        }
 
         OrderPageResp resp = new OrderPageResp();
         resp.setTotal(pageResult.getTotal());
-        resp.setPage((long) pageResult.getCurrent());
-        resp.setSize((long) pageResult.getSize());
-        resp.setRecords(pageResult.getRecords().stream()
-                .map(o -> toVO(o, itemMap.getOrDefault(o.getId(), Collections.emptyList())))
-                .collect(Collectors.toList()));
+        resp.setPage(pageResult.getCurrent());
+        resp.setSize(pageResult.getSize());
+        resp.setRecords(records);
         return resp;
     }
 
@@ -146,12 +209,12 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             throw new BizException(OrderErrorCode.ORDER_NOT_FOUND);
         }
         if (!order.getUserId().equals(userId)) {
-            throw new BizException(OrderErrorCode.ORDER_NOT_OWN);
+            throw new BizException(OrderErrorCode.ORDER_ACCESS_DENIED);
         }
 
-        List<OrderItem> items = orderItemMapper.selectList(
+        List<OrderItem> orderItems = orderItemMapper.selectList(
                 new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, orderId));
-        return toVO(order, items);
+        return toVO(order, orderItems);
     }
 
     @Override
@@ -162,15 +225,16 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             throw new BizException(OrderErrorCode.ORDER_NOT_FOUND);
         }
         if (!order.getUserId().equals(userId)) {
-            throw new BizException(OrderErrorCode.ORDER_NOT_OWN);
+            throw new BizException(OrderErrorCode.ORDER_ACCESS_DENIED);
         }
         if (order.getStatus() != OrderStatus.PENDING_PAYMENT.getCode()) {
-            throw new BizException(OrderErrorCode.ORDER_STATUS_INVALID, "只有待支付状态可以取消");
+            throw new BizException(OrderErrorCode.ORDER_CANNOT_CANCEL);
         }
+
         order.setStatus(OrderStatus.CANCELLED.getCode());
         order.setCancelTime(LocalDateTime.now());
         updateById(order);
-        log.info("[用户取消订单] userId={}, orderId={}, orderNo={}", userId, orderId, order.getOrderNo());
+        log.info("[用户取消订单] userId={}, orderId={}", userId, orderId);
     }
 
     @Override
@@ -181,47 +245,45 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             throw new BizException(OrderErrorCode.ORDER_NOT_FOUND);
         }
         if (!order.getUserId().equals(userId)) {
-            throw new BizException(OrderErrorCode.ORDER_NOT_OWN);
+            throw new BizException(OrderErrorCode.ORDER_ACCESS_DENIED);
         }
         if (order.getStatus() != OrderStatus.SHIPPING.getCode()) {
-            throw new BizException(OrderErrorCode.ORDER_STATUS_INVALID, "只有配送中状态可以确认收货");
+            throw new BizException(OrderErrorCode.ORDER_CANNOT_CONFIRM);
         }
+
         order.setStatus(OrderStatus.COMPLETED.getCode());
         order.setCompleteTime(LocalDateTime.now());
         updateById(order);
-        log.info("[用户确认收货] userId={}, orderId={}, orderNo={}", userId, orderId, order.getOrderNo());
+        log.info("[用户确认收货] userId={}, orderId={}", userId, orderId);
     }
 
     // ==================== B 端（管理后台） ====================
 
     @Override
     public AdminOrderPageResp adminGetPage(AdminOrderListQuery query) {
-        int page = query.getPage() == null ? 1 : query.getPage();
-        int size = query.getSize() == null ? 10 : query.getSize();
-
-        Page<Order> pageParam = new Page<>(page, size);
-
+        Page<Order> pageParam = new Page<>(query.getPage(), query.getSize());
         LambdaQueryWrapper<Order> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Order::getIsDeleted, 0)
-               .orderByDesc(Order::getCreateTime);
-        if (query.getStatus() != null) {
-            wrapper.eq(Order::getStatus, query.getStatus());
-        }
-        
+        if (query.getUserId() != null) wrapper.eq(Order::getUserId, query.getUserId());
+        if (query.getStatus() != null) wrapper.eq(Order::getStatus, query.getStatus());
+        if (query.getOrderNo() != null) wrapper.eq(Order::getOrderNo, query.getOrderNo());
+        wrapper.eq(Order::getIsDeleted, 0);
+        wrapper.orderByDesc(Order::getCreateTime);
 
         Page<Order> pageResult = page(pageParam, wrapper);
+        List<Long> orderIds = pageResult.getRecords().stream().map(Order::getId).collect(Collectors.toList());
+        Map<Long, List<OrderItem>> itemsMap = loadItemsByOrderIds(orderIds);
 
-        List<Long> orderIds = pageResult.getRecords().stream()
-                .map(Order::getId).collect(Collectors.toList());
-        Map<Long, List<OrderItem>> itemMap = loadItemsByOrderIds(orderIds);
+        List<AdminOrderVO> records = new ArrayList<>();
+        for (Order order : pageResult.getRecords()) {
+            List<OrderItem> orderItems = itemsMap.getOrDefault(order.getId(), List.of());
+            records.add(toAdminVO(order, null, orderItems));
+        }
 
         AdminOrderPageResp resp = new AdminOrderPageResp();
         resp.setTotal(pageResult.getTotal());
-        resp.setPage((long) pageResult.getCurrent());
-        resp.setSize((long) pageResult.getSize());
-        resp.setRecords(pageResult.getRecords().stream()
-                .map(o -> toAdminVO(o, null, itemMap.getOrDefault(o.getId(), Collections.emptyList())))
-                .collect(Collectors.toList()));
+        resp.setPage(pageResult.getCurrent());
+        resp.setSize(pageResult.getSize());
+        resp.setRecords(records);
         return resp;
     }
 
@@ -231,9 +293,10 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         if (order == null || order.getIsDeleted() == 1) {
             throw new BizException(OrderErrorCode.ORDER_NOT_FOUND);
         }
-        List<OrderItem> items = orderItemMapper.selectList(
+
+        List<OrderItem> orderItems = orderItemMapper.selectList(
                 new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, orderId));
-        return toAdminVO(order, null, items);
+        return toAdminVO(order, null, orderItems);
     }
 
     @Override
@@ -307,6 +370,36 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         order.setPayTime(LocalDateTime.now());
         updateById(order);
         log.info("[markPaid] 订单状态已更新: orderId={} -> PAID, paymentNo={}", orderId, paymentNo);
+    }
+
+    /**
+     * 自动补全商品快照。如果前端未传递 productName/productPrice/productCover，
+     * 则通过 Feign 调用 del-product 获取。这样前端只需传 productId + quantity。
+     */
+    private void fillProductSnapshot(OrderItemReq itemReq) {
+        if (itemReq.getProductId() == null) {
+            return;
+        }
+        boolean needFetch = itemReq.getProductName() == null
+                || itemReq.getProductPrice() == null
+                || itemReq.getProductCover() == null;
+        if (!needFetch) {
+            return;
+        }
+        try {
+            R<ProductSnapshotVO> resp = productFeignClient.getProductSnapshot(itemReq.getProductId());
+            if (resp != null && resp.getData() != null) {
+                ProductSnapshotVO snap = resp.getData();
+                if (itemReq.getProductName() == null) itemReq.setProductName(snap.getName());
+                if (itemReq.getProductCover() == null) itemReq.setProductCover(snap.getCover());
+                if (itemReq.getProductPrice() == null) itemReq.setProductPrice(snap.getRealPrice());
+                log.info("[订单创建-商品快照补全] productId={}, name={}, price={}",
+                        itemReq.getProductId(), snap.getName(), snap.getRealPrice());
+            }
+        } catch (Exception e) {
+            log.warn("[订单创建-商品快照获取失败] productId={}, error={}",
+                    itemReq.getProductId(), e.getMessage());
+        }
     }
 
     // ==================== 私有 ====================

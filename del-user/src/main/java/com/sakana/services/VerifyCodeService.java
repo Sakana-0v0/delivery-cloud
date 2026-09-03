@@ -34,7 +34,7 @@ public class VerifyCodeService {
     private static final int CODE_LENGTH = 6;
     private static final long TTL_SECONDS = 5 * 60;         // 5分钟
     private static final long SEND_INTERVAL_SECONDS = 60;   // 1分钟内只能发一次
-    private static final int DAILY_LIMIT = 5;              // 每天最多发5次
+    private static final int DAILY_LIMIT = 100;              // 每天最多发100次
 
     private final StringRedisTemplate stringRedisTemplate;
     private final MessageChannel messageChannel;

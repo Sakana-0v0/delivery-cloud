@@ -83,6 +83,12 @@
             <artifactId>hutool-all</artifactId>
         </dependency>
 
+        <!-- Redis (Lettuce, used by RedisConfig to force RESP2 protocol) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <!-- Jackson 注解 -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

@@ -3,6 +3,7 @@ package com.sakana.web.controllers.internal;
 import com.sakana.services.UserAddressService;
 import com.sakana.web.vo.AdminAddressPageResp;
 import com.sakana.web.vo.R;
+import com.sakana.web.vo.UserAddressVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import lombok.RequiredArgsConstructor;
@@ -33,5 +34,12 @@ public class InternalAddressController {
     public R<Void> delete(@PathVariable Long id) {
         userAddressService.adminDeleteAddress(id);
         return R.ok();
+    }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "根据ID查询收货地址（供其他服务内部调用）")
+    public R<UserAddressVO> getById(@PathVariable Long id) {
+        UserAddressVO address = userAddressService.getAddressById(id);
+        return R.ok(address);
     }
 }

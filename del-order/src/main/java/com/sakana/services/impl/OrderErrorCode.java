@@ -15,6 +15,9 @@ public enum OrderErrorCode implements BaseErrorCode {
     ORDER_CANCEL_FAIL(4006, "订单取消失败", 400),
     ORDER_CONFIRM_FAIL(4007, "确认收货失败", 400),
     PAYMENT_DEADLINE_PASSED(4008, "支付已超时", 400),
+    ORDER_ACCESS_DENIED(4009, "无权访问此订单", 403),
+    ORDER_CANNOT_CANCEL(4010, "订单当前状态不允许取消", 400),
+    ORDER_CANNOT_CONFIRM(4011, "订单当前状态不允许确认收货", 400),
     ;
 
     private final int code;

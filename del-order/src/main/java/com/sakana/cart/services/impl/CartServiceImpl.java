@@ -7,6 +7,7 @@ import com.sakana.feign.vo.ProductSnapshotVO;
 import com.sakana.cart.services.CartService;
 import com.sakana.cart.web.vo.CartItemVO;
 import com.sakana.cart.web.vo.CartVO;
+import com.sakana.web.vo.R;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -56,9 +57,13 @@ public class CartServiceImpl implements CartService {
     @Override
     public CartVO getCart(Long userId) {
         String cacheKey = getCacheKey(userId);
+        log.info("[购物车] 获取购物车开始, userId={}, cacheKey={}", userId, cacheKey);
 
         Map<Object, Object> entries = redisTemplate.opsForHash().entries(cacheKey);
+        log.info("[购物车] Redis原始数据, cacheKey={}, entries数量={}", cacheKey, entries == null ? "null" : entries.size());
+
         if (entries == null || entries.isEmpty()) {
+            log.info("[购物车] Redis无数据, 返回空购物车");
             return emptyCart();
         }
 
@@ -66,18 +71,22 @@ public class CartServiceImpl implements CartService {
         BigDecimal totalAmount = BigDecimal.ZERO;
 
         for (Map.Entry<Object, Object> entry : entries.entrySet()) {
+            log.info("[购物车] 处理商品, key={}, value={}", entry.getKey(), entry.getValue());
+
             Long productId = Long.parseLong(entry.getKey().toString());
             Integer quantity = Integer.parseInt(entry.getValue().toString());
 
             ProductSnapshotVO product = safeGetProduct(productId);
             if (product == null) {
                 // 商品不存在 / 已下架 / 已删除 / 服务不可用 → 跳过该条目
+                log.warn("[购物车] 商品信息获取失败, productId={}, 跳过", productId);
                 continue;
             }
 
             // 单价以 realPrice 为准
             BigDecimal price = product.getRealPrice();
             if (price == null) {
+                log.warn("[购物车] 商品价格为空, productId={}, 跳过", productId);
                 continue;
             }
             BigDecimal subtotal = price.multiply(BigDecimal.valueOf(quantity));
@@ -91,7 +100,12 @@ public class CartServiceImpl implements CartService {
             item.setSubtotal(subtotal);
             items.add(item);
             totalAmount = totalAmount.add(subtotal);
+
+            log.info("[购物车] 商品添加成功, productId={}, name={}, quantity={}, subtotal={}", 
+                     productId, product.getName(), quantity, subtotal);
         }
+
+        log.info("[购物车] 最终结果, userId={}, items数量={}, totalAmount={}", userId, items.size(), totalAmount);
 
         CartVO cart = new CartVO();
         cart.setItems(items);
@@ -176,7 +190,11 @@ public class CartServiceImpl implements CartService {
      */
     private ProductSnapshotVO requireAvailableProduct(Long productId) {
         try {
-            return productFeignClient.getProductSnapshot(productId);
+            R<ProductSnapshotVO> resp = productFeignClient.getProductSnapshot(productId);
+            if (resp == null || resp.getData() == null) {
+                throw new BizException(9401, "商品不存在", 404);
+            }
+            return resp.getData();
         } catch (BizException e) {
             throw e;
         } catch (Exception e) {
@@ -190,9 +208,16 @@ public class CartServiceImpl implements CartService {
      */
     private ProductSnapshotVO safeGetProduct(Long productId) {
         try {
-            return productFeignClient.getProductSnapshot(productId);
+            R<ProductSnapshotVO> resp = productFeignClient.getProductSnapshot(productId);
+            log.info("[购物车] safeGetProduct响应, productId={}, code={}, data={}", 
+                     productId, resp != null ? resp.getCode() : "null", 
+                     resp != null && resp.getData() != null ? resp.getData().getName() : "null");
+            if (resp == null || resp.getData() == null) {
+                return null;
+            }
+            return resp.getData();
         } catch (Exception e) {
-            log.debug("[购物车] 跳过不可用商品 productId={}, msg={}", productId, e.getMessage());
+            log.warn("[购物车] safeGetProduct失败, productId={}, error={}", productId, e.getMessage());
             return null;
         }
     }

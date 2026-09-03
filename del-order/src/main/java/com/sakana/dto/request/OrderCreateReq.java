@@ -2,7 +2,6 @@ package com.sakana.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 
@@ -20,18 +19,18 @@ public class OrderCreateReq {
     @Schema(description = "订单商品列表", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<OrderItemReq> items = new ArrayList<>();
 
-    @NotBlank(message = "收货人姓名不能为空")
+    @Schema(description = "收货地址ID（与收货人信息二选一，优先使用addressId）")
+    private Long addressId;
+
     @Size(max = 50)
-    @Schema(description = "收货人姓名", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "收货人姓名（addressId为空时必填）")
     private String receiverName;
 
-    @NotBlank(message = "收货人电话不能为空")
     @Size(max = 20)
-    @Schema(description = "收货人电话", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "收货人电话（addressId为空时必填）")
     private String receiverPhone;
 
-    @NotBlank(message = "收货地址不能为空")
-    @Schema(description = "收货地址", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "收货地址（addressId为空时必填）")
     private String receiverAddress;
 
     @Size(max = 500)
@@ -40,6 +39,9 @@ public class OrderCreateReq {
 
     public List<OrderItemReq> getItems() { return items; }
     public void setItems(List<OrderItemReq> items) { this.items = items; }
+
+    public Long getAddressId() { return addressId; }
+    public void setAddressId(Long addressId) { this.addressId = addressId; }
 
     public String getReceiverName() { return receiverName; }
     public void setReceiverName(String receiverName) { this.receiverName = receiverName; }

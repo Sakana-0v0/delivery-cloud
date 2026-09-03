@@ -165,6 +165,15 @@ public class UserAddressServiceImpl extends ServiceImpl<UserAddressMapper, UserA
         log.info("[管理后台删除收货地址] addressId={}, userId={}", addressId, exist.getUserId());
     }
 
+    @Override
+    public UserAddressVO getAddressById(Long addressId) {
+        UserAddress addr = getById(addressId);
+        if (addr == null || addr.getIsDeleted() == 1) {
+            return null;
+        }
+        return toVO(addr, null);
+    }
+
     // ==================== 私有方法 ====================
 
     private void clearDefault(Long userId) {

@@ -10,12 +10,6 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * del-product Spring Security 配置（双密钥：user-pool + admin-pool）
@@ -26,6 +20,7 @@ import java.util.List;
  *   <li>/api/v1/admin/products/** + /api/v1/admin/categories/** → ADMIN / SUPER_ADMIN</li>
  *   <li>/internal/** → 内部服务调用（需 X-Internal-Service-Token 头）</li>
  * </ul>
+ * <p>CORS 配置统一由网关处理，业务服务不参与。
  */
 @Configuration("productSecurityConfig")
 @EnableWebSecurity
@@ -44,7 +39,6 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
                         // 公开：商品浏览 / 分类
                         .requestMatchers("/api/v1/products/**", "/api/v1/categories/**").permitAll()
@@ -66,18 +60,5 @@ public class SecurityConfig {
                 .addFilterBefore(dualPoolJwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
-    }
-
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("*"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
-        configuration.setExposedHeaders(List.of("Authorization"));
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
     }
 }

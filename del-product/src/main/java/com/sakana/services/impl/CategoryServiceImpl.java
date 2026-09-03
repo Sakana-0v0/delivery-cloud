@@ -68,6 +68,15 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
     }
 
     @Override
+    public List<CategoryVO> adminGetAll() {
+        LambdaQueryWrapper<Category> wrapper = new LambdaQueryWrapper<>();
+        wrapper.orderByAsc(Category::getSort);
+        return list(wrapper).stream()
+                .map(this::toVO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public void adminCreate(CategoryReq req) {
         Category category = new Category();
         BeanUtils.copyProperties(req, category);

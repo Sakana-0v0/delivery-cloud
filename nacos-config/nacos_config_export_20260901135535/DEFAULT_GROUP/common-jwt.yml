@@ -1,0 +1,30 @@
+# ============================================================
+# Nacos Data ID: common-jwt.yml
+# Group: DEFAULT_GROUP
+# Namespace: sakana
+# ============================================================
+# 创建日期: 2026-08-26
+# 下次轮换: 2026-11-24 (90 天后)
+# 创建人: sakanaovo
+# 
+# 所有 11 个微服务均 import 此文件，密钥只在这里维护一份。
+# 
+# 密钥轮换步骤：
+# 1. 提前 7 天生成新密钥（用 openssl rand -base64 48）
+# 2. 在 Nacos 上同时保留新旧两个字段（如 old-user-pool-secret）
+# 3. del-user 签发同时使用新密钥；其他服务允许两个密钥都通过
+# 4. 7 天后下线旧密钥
+# 
+# ⚠️ 警告：Nacos 配置是明文存储，任何能访问 Nacos 控制台的人
+#          都能看到密钥。生产环境应考虑：
+#          - 限制 Nacos 访问权限（仅运维团队）
+#          - 启用 Nacos 访问日志
+#          - 定期审计 Nacos 操作日志
+# ============================================================
+
+app:
+  jwt:
+    user-pool-secret: "del-user-c-end-secret-key-7sKpR9D2fQzN8vBcX5gHjL4mWtY6aUe0oIu3bSrF7dGhJkLqPwTyZr"
+    admin-pool-secret: "del-admin-b-end-secret-key-xQ2bN7dFgH9jKpS4vZcX8mW5rTy0aUe3iO16qBfDsGhJkLpR7tYzMn"
+    access-expire-seconds: 7200
+    refresh-expire-seconds: 1209600

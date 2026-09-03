@@ -1,12 +1,13 @@
 package com.sakana.feign;
 
 import com.sakana.feign.dto.UserStatsDTO;
+import com.sakana.web.vo.R;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.openfeign.FallbackFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * UserStatsClient 降级工厂
+ * UserStatsClient fallback factory.
  */
 @Slf4j
 @Component
@@ -14,16 +15,16 @@ public class UserStatsClientFallbackFactory implements FallbackFactory<UserStats
 
     @Override
     public UserStatsClient create(Throwable cause) {
-        log.error("[UserStatsClient] Feign 调用失败，进入降级逻辑: {}", cause.getMessage());
+        log.error("[UserStatsClient] Feign call failed: {}", cause.getMessage());
 
         return new UserStatsClient() {
             @Override
-            public UserStatsDTO getUserStats() {
-                log.warn("[UserStatsClient] 降级返回：用户统计为空");
+            public R<UserStatsDTO> getUserStats() {
+                log.warn("[UserStatsClient] fallback: user stats empty");
                 UserStatsDTO dto = new UserStatsDTO();
                 dto.setTotalUserCount(0L);
                 dto.setTodayNewUserCount(0L);
-                return dto;
+                return R.ok(dto);
             }
         };
     }

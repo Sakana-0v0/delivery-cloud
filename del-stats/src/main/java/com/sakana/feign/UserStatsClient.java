@@ -1,6 +1,7 @@
 package com.sakana.feign;
 
 import com.sakana.feign.dto.UserStatsDTO;
+import com.sakana.web.vo.R;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 
@@ -16,11 +17,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 )
 public interface UserStatsClient {
 
-    /**
-     * 获取用户统计数据
-     *
-     * @return 累计用户数和今日新增用户数
-     */
     @GetMapping("/internal/stats/users")
-    UserStatsDTO getUserStats();
+    R<UserStatsDTO> getUserStats();
 }

@@ -56,4 +56,9 @@ public interface UserAddressService extends IService<UserAddress> {
      * 管理后台：强制删除收货地址
      */
     void adminDeleteAddress(Long addressId);
+
+    /**
+     * 内部接口：根据地址ID查询收货地址（无权限校验，供其他服务调用）
+     */
+    UserAddressVO getAddressById(Long addressId);
 }

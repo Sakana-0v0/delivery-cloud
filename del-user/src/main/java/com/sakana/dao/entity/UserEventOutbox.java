@@ -5,11 +5,13 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.Data;
 
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * 用户事件 outbox（事务性发件箱）。
@@ -22,11 +24,14 @@ import java.time.LocalDateTime;
  * </ol>
  *
  * <h2>为什么用 outbox</h2>
- * "改本地 t_user" 与 "发 MQ 通知其他服务" 无法原子化。
+ * \"\"改本地 t_user\" 与 \"发 MQ 通知其他服务\" 无法原子化。
  * outbox 模式保证：业务事务提交 = outbox 一定落库；定时器 = 至少一次投递；消费方 = 幂等处理。
+ *
+ * <h2>payload 字段说明</h2>
+ * 所有事件数据存储在 payload JSON 字段中，包含：eventId, userId, username, email, ip 等。
  */
 @Data
-@TableName("user_event_outbox")
+@TableName(value = "user_event_outbox", autoResultMap = true)
 public class UserEventOutbox implements Serializable {
 
     @Serial
@@ -35,23 +40,21 @@ public class UserEventOutbox implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 事件唯一ID（用于消费端幂等） */
-    private String eventId;
-
     /** 事件类型：REGISTER / LOGIN */
     private String eventType;
 
     /** 关联用户ID */
     private Long userId;
 
-    /** 用户名 */
-    private String username;
-
-    /** 用户邮箱 */
-    private String email;
-
-    /** 登录IP（仅登录事件有值） */
-    private String ip;
+    /**
+     * 事件负载（JSON），包含：
+     * - eventId: 事件唯一ID
+     * - username: 用户名
+     * - email: 用户邮箱
+     * - ip: 登录IP（仅登录事件）
+     */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private Map<String, Object> payload;
 
     /** outbox 状态：0 NEW 1 SENT 2 ACK 3 DLQ */
     private Integer status;

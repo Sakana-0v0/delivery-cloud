@@ -1,32 +1,40 @@
 package com.sakana.integration.message;
 
+import com.sakana.events.EmailMessageEvent;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
 /**
- * 消息通道桩（Stub）
- *
- * <p>当前实现仅打印日志，不真正发送消息。
- * 后续集成真实消息服务（如 MQ、邮件网关）时替换此实现即可。
+ * 消息通道（真实实现）
+ * <p>
+ * 将消息投递到 RabbitMQ，由 del-message 异步消费并发送。
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class MessageChannel {
 
-    /**
-     * 发送消息
-     *
-     * @param type    消息类型：email / sms 等
-     * @param target  目标地址：邮箱 / 手机号
-     * @param subject 主题
-     * @param template 模板名
-     * @param params  模板参数
-     */
+    /** 用户消息 topic 交换机 */
+    public static final String USER_MESSAGE_EXCHANGE = "user.message.exchange";
+
+    /** email 消息 routing key */
+    public static final String EMAIL_ROUTING_KEY = "email.send";
+
+    private final RabbitTemplate rabbitTemplate;
+
     public void send(String type, String target, String subject,
                      String template, Map<String, Object> params) {
-        log.info("[MessageChannel][STUB] 消息发送（未真正发送）| type={}, target={}, subject={}, template={}, params={}",
-                type, target, subject, template, params);
+        if ("email".equals(type)) {
+            EmailMessageEvent event = new EmailMessageEvent(target, subject, template, params);
+            rabbitTemplate.convertAndSend(USER_MESSAGE_EXCHANGE, EMAIL_ROUTING_KEY, event);
+            log.info("[MessageChannel] 邮件消息已投递到 MQ: to={}, subject={}, template={}",
+                    target, subject, template);
+        } else {
+            log.warn("[MessageChannel] 暂不支持的消息类型: type={}, target={}", type, target);
+        }
     }
 }

@@ -31,6 +31,11 @@ public interface CategoryService extends IService<Category> {
     IPage<CategoryVO> adminGetPage(int page, int size);
 
     /**
+     * 管理后台全量列表（下拉框专用，不分页）
+     */
+    List<CategoryVO> adminGetAll();
+
+    /**
      * 管理后台新增分类
      */
     void adminCreate(CategoryReq req);

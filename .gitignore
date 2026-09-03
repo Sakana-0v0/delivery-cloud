@@ -37,3 +37,18 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Maven local repo & logs ###
+.m2/
+maven_repo/
+logs/
+*.log
+hs_err_pid*.log
+replay_pid*.log
+
+### Local config ###
+settings.xml
+result.txt
+
+### Misc ###
+-w

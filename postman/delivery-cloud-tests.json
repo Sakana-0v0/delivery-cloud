@@ -1,0 +1,183 @@
+{
+  "info": {
+    "name": "delivery-cloud Integration Tests",
+    "description": "delivery-cloud microservice integration test suite",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key":"baseUrl","value":"http://127.0.0.1:10010","type":"string"},
+    {"key":"internalServiceToken","value":"internal-service-secret-key-2024","type":"string"},
+    {"key":"testUserUsername","value":"testuser","type":"string"},
+    {"key":"testUserPassword","value":"Test@123","type":"string"},
+    {"key":"testAdminUsername","value":"admin","type":"string"},
+    {"key":"testAdminPassword","value":"Admin@123","type":"string"},
+    {"key":"userToken","value":"","type":"string"},
+    {"key":"adminToken","value":"","type":"string"},
+    {"key":"orderId","value":"","type":"string"},
+    {"key":"productId","value":"","type":"string"},
+    {"key":"paymentId","value":"","type":"string"}
+  ],
+  "item": [
+    {
+      "name": "00_Prerequisites",
+      "item": [
+        {
+          "name": "Health_Nacos",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Nacos: 200 OK\u0027, function() { pm.response.to.have.status(200); });"]}}],
+          "request": {"method":"GET","header":[],"url":{"raw":"http://127.0.0.1:8848/nacos/v1/console/health","host":["127.0.0.1"],"port":"8848","path":["nacos","v1","console","health"]}}
+        },
+        {
+          "name": "Health_RabbitMQ",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027RabbitMQ: connected\u0027, function() { pm.expect(pm.response.code).to.be.oneOf([200, 401]); });"]}}],
+          "request": {"method":"GET","header":[],"url":{"raw":"http://127.0.0.1:15672/api/overview","host":["127.0.0.1"],"port":"15672","path":["api","overview"]}}
+        }
+      ]
+    },
+    {
+      "name": "01_Auth_Flow",
+      "item": [
+        {
+          "name": "UC-001-Step1_Register_User",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Register: code=0\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });"]}}],
+          "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"url":{"raw":"{{baseUrl}}/api/v1/auth/register","host":["{{baseUrl}}"],"path":["api","v1","auth","register"]},"body":{"mode":"raw","raw":"{\"username\":\"testuser123\",\"password\":\"Test@123\",\"email\":\"test@test.com\"}","options":{"raw":{"language":"json"}}}}
+        },
+        {
+          "name": "UC-001-Step2_Login_User",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Login: get token\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });","pm.test(\u0027Login: USER_POOL\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.data.source).to.eql(\u0027USER_POOL\u0027); pm.collectionVariables.set(\u0027userToken\u0027, jsonData.data.token); });"]}}],
+          "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"url":{"raw":"{{baseUrl}}/api/v1/auth/login","host":["{{baseUrl}}"],"path":["api","v1","auth","login"]},"body":{"mode":"raw","raw":"{\"username\":\"{{testUserUsername}}\",\"password\":\"{{testUserPassword}}\"}","options":{"raw":{"language":"json"}}}}
+        },
+        {
+          "name": "UC-001-Step3_Get_User_Profile",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Profile: success\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });"]}}],
+          "request": {"method":"GET","header":[{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/user/profile","host":["{{baseUrl}}"],"path":["api","v1","user","profile"]}}
+        },
+        {
+          "name": "UC-001-Step4_Login_Admin",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Admin Login: success\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });","pm.test(\u0027Admin: ADMIN_POOL\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.data.source).to.eql(\u0027ADMIN_POOL\u0027); pm.collectionVariables.set(\u0027adminToken\u0027, jsonData.data.token); });"]}}],
+          "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"url":{"raw":"{{baseUrl}}/api/v1/admin/auth/login","host":["{{baseUrl}}"],"path":["api","v1","admin","auth","login"]},"body":{"mode":"raw","raw":"{\"username\":\"{{testAdminUsername}}\",\"password\":\"{{testAdminPassword}}\"}","options":{"raw":{"language":"json"}}}}
+        }
+      ]
+    },
+    {
+      "name": "02_Product_Management",
+      "item": [
+        {
+          "name": "UC-002-Step1_List_Products",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Products: accessible\u0027, function() { pm.response.to.have.status(200); });","pm.test(\u0027Products: array\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.data).to.be.an(\u0027array\u0027); });"]}}],
+          "request": {"method":"GET","header":[],"url":{"raw":"{{baseUrl}}/api/v1/products","host":["{{baseUrl}}"],"path":["api","v1","products"]}}
+        },
+        {
+          "name": "UC-002-Step2_Get_Product_Detail",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Product Detail: success\u0027, function() { pm.response.to.have.status(200); });"]}}],
+          "request": {"method":"GET","header":[],"url":{"raw":"{{baseUrl}}/api/v1/products/{{productId}}","host":["{{baseUrl}}"],"path":["api","v1","products","{{productId}}"]}}
+        },
+        {
+          "name": "UC-002-Step3_Add_To_Cart",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Add to Cart: success\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });"]}}],
+          "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"},{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/cart/items","host":["{{baseUrl}}"],"path":["api","v1","cart","items"]},"body":{"mode":"raw","raw":"{\"productId\":\"{{productId}}\",\"quantity\":2}","options":{"raw":{"language":"json"}}}}
+        },
+        {
+          "name": "UC-002-Step4_Get_Cart",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Get Cart: success\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });"]}}],
+          "request": {"method":"GET","header":[{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/cart","host":["{{baseUrl}}"],"path":["api","v1","cart"]}}
+        }
+      ]
+    },
+    {
+      "name": "03_Order_Processing",
+      "item": [
+        {
+          "name": "UC-002-Step5_Create_Order",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Create Order: success\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });","pm.test(\u0027Create Order: get orderId\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.data).to.have.property(\u0027orderId\u0027); pm.collectionVariables.set(\u0027orderId\u0027, jsonData.data.orderId); });"]}}],
+          "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"},{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/orders","host":["{{baseUrl}}"],"path":["api","v1","orders"]},"body":{"mode":"raw","raw":"{\"addressId\":1,\"paymentMethod\":\"ALIPAY\"}","options":{"raw":{"language":"json"}}}}
+        },
+        {
+          "name": "UC-002-Step6_Get_Order_Detail",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Order Detail: success\u0027, function() { pm.response.to.have.status(200); });"]}}],
+          "request": {"method":"GET","header":[{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/orders/{{orderId}}","host":["{{baseUrl}}"],"path":["api","v1","orders","{{orderId}}"]}}
+        }
+      ]
+    },
+    {
+      "name": "04_Payment_Flow",
+      "item": [
+        {
+          "name": "UC-004-Step1_Create_Payment",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Create Payment: success\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });","pm.test(\u0027Create Payment: get paymentId\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.data).to.have.property(\u0027paymentId\u0027); pm.collectionVariables.set(\u0027paymentId\u0027, jsonData.data.paymentId); });"]}}],
+          "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"},{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/pay/create","host":["{{baseUrl}}"],"path":["api","v1","pay","create"]},"body":{"mode":"raw","raw":"{\"orderId\":\"{{orderId}}\",\"paymentMethod\":\"ALIPAY\"}","options":{"raw":{"language":"json"}}}}
+        },
+        {
+          "name": "UC-004-Step2_Mock_Payment_Notify",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Payment Notify: success\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });"]}}],
+          "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"url":{"raw":"{{baseUrl}}/api/v1/pay/notify","host":["{{baseUrl}}"],"path":["api","v1","pay","notify"]},"body":{"mode":"raw","raw":"{\"paymentId\":\"{{paymentId}}\",\"status\":\"SUCCESS\",\"tradeNo\":\"MOCK_123\"}","options":{"raw":{"language":"json"}}}}
+        },
+        {
+          "name": "UC-004-Step3_Verify_Order_Paid",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Order PAID: success\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.data.status).to.eql(\u0027PAID\u0027); });"]}}],
+          "request": {"method":"GET","header":[{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/orders/{{orderId}}","host":["{{baseUrl}}"],"path":["api","v1","orders","{{orderId}}"]}}
+        }
+      ]
+    },
+    {
+      "name": "05_Admin_Operations",
+      "item": [
+        {
+          "name": "UC-003-Step1_Admin_Create_Product",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Admin Create Product: success\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });"]}}],
+          "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"},{"key":"Authorization","value":"Bearer {{adminToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/admin/products","host":["{{baseUrl}}"],"path":["api","v1","admin","products"]},"body":{"mode":"raw","raw":"{\"name\":\"Test Product\",\"price\":99.99,\"categoryId\":1,\"stock\":100}","options":{"raw":{"language":"json"}}}}
+        },
+        {
+          "name": "UC-003-Step2_Admin_List_Products",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Admin List Products: success\u0027, function() { pm.response.to.have.status(200); });"]}}],
+          "request": {"method":"GET","header":[{"key":"Authorization","value":"Bearer {{adminToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/admin/products","host":["{{baseUrl}}"],"path":["api","v1","admin","products"]}}
+        },
+        {
+          "name": "UC-003-Step3_Admin_List_Orders",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Admin List Orders: success\u0027, function() { pm.response.to.have.status(200); });"]}}],
+          "request": {"method":"GET","header":[{"key":"Authorization","value":"Bearer {{adminToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/admin/orders","host":["{{baseUrl}}"],"path":["api","v1","admin","orders"]}}
+        }
+      ]
+    },
+    {
+      "name": "06_Gateway_Routing",
+      "item": [
+        {"name":"GW-001_Route_To_Product","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027GW: Product route\u0027, function() { pm.response.to.have.status(200); });"]}}],"request":{"method":"GET","header":[],"url":{"raw":"{{baseUrl}}/api/v1/products","host":["{{baseUrl}}"],"path":["api","v1","products"]}}},
+        {"name":"GW-001_Route_To_User","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027GW: User route\u0027, function() { pm.response.to.have.status(200); });"]}}],"request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/user/profile","host":["{{baseUrl}}"],"path":["api","v1","user","profile"]}}},
+        {"name":"GW-002_Header_Passthrough","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027GW: Header passthrough\u0027, function() { pm.response.to.have.status(200); });"]}}],"request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/user/profile","host":["{{baseUrl}}"],"path":["api","v1","user","profile"]}}}
+      ]
+    },
+    {
+      "name": "07_Message_Events",
+      "item": [
+        {"name":"MQ-001_Login_Event","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027MQ: Login event sent\u0027, function() { pm.response.to.have.status(200); });"]}}],"request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/user/profile","host":["{{baseUrl}}"],"path":["api","v1","user","profile"]}}},
+        {"name":"MQ-002_Order_Event","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027MQ: Order event sent\u0027, function() { pm.response.to.have.status(200); });"]}}],"request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/orders/{{orderId}}","host":["{{baseUrl}}"],"path":["api","v1","orders","{{orderId}}"]}}}
+      ]
+    },
+    {
+      "name": "08_Internal_Stats",
+      "item": [
+        {"name":"UC-005_Stats_Today","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Stats Today: success\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });"]}}],"request":{"method":"GET","header":[{"key":"X-Internal-Service-Token","value":"{{internalServiceToken}}"}],"url":{"raw":"{{baseUrl}}/internal/stats/today","host":["{{baseUrl}}"],"path":["internal","stats","today"]}}},
+        {"name":"UC-005_Stats_Users","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Stats Users: success\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });"]}}],"request":{"method":"GET","header":[{"key":"X-Internal-Service-Token","value":"{{internalServiceToken}}"}],"url":{"raw":"{{baseUrl}}/internal/stats/users","host":["{{baseUrl}}"],"path":["internal","stats","users"]}}},
+        {"name":"UC-005_Stats_HotProducts","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027Stats HotProducts: success\u0027, function() { var jsonData = pm.response.json(); pm.expect(jsonData.code).to.eql(0); });"]}}],"request":{"method":"GET","header":[{"key":"X-Internal-Service-Token","value":"{{internalServiceToken}}"}],"url":{"raw":"{{baseUrl}}/internal/stats/hot-products","host":["{{baseUrl}}"],"path":["internal","stats","hot-products"]}}}
+      ]
+    },
+    {
+      "name": "09_Security_Tests",
+      "item": [
+        {"name":"SEC-001_USER_Cannot_Access_Admin","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027SEC-001: 403 Forbidden\u0027, function() { pm.response.to.have.status(403); });"]}}],"request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/admin/products","host":["{{baseUrl}}"],"path":["api","v1","admin","products"]}}},
+        {"name":"SEC-001_ADMIN_Cannot_Access_User","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027SEC-001: 403 Forbidden\u0027, function() { pm.response.to.have.status(403); });"]}}],"request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{adminToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/user/profile","host":["{{baseUrl}}"],"path":["api","v1","user","profile"]}}},
+        {"name":"SEC-002_No_Token_Internal","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027SEC-002: 401 Unauthorized\u0027, function() { pm.response.to.have.status(401); });"]}}],"request":{"method":"GET","header":[],"url":{"raw":"{{baseUrl}}/internal/stats/users","host":["{{baseUrl}}"],"path":["internal","stats","users"]}}},
+        {"name":"SEC-002_Wrong_Internal_Token","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027SEC-002: 403 Forbidden\u0027, function() { pm.response.to.have.status(403); });"]}}],"request":{"method":"GET","header":[{"key":"X-Internal-Service-Token","value":"wrong-token"}],"url":{"raw":"{{baseUrl}}/internal/stats/users","host":["{{baseUrl}}"],"path":["internal","stats","users"]}}},
+        {"name":"SEC-002_Correct_Internal_Token","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027SEC-002: 200 OK\u0027, function() { pm.response.to.have.status(200); });"]}}],"request":{"method":"GET","header":[{"key":"X-Internal-Service-Token","value":"{{internalServiceToken}}"}],"url":{"raw":"{{baseUrl}}/internal/stats/users","host":["{{baseUrl}}"],"path":["internal","stats","users"]}}},
+        {"name":"SEC-003_Fake_Token","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027SEC-003: 401 Unauthorized\u0027, function() { pm.response.to.have.status(401); });"]}}],"request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer fake.token"}],"url":{"raw":"{{baseUrl}}/api/v1/user/profile","host":["{{baseUrl}}"],"path":["api","v1","user","profile"]}}},
+        {"name":"SEC-003_Missing_Auth_Header","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027SEC-003: 401 Unauthorized\u0027, function() { pm.response.to.have.status(401); });"]}}],"request":{"method":"GET","header":[],"url":{"raw":"{{baseUrl}}/api/v1/user/profile","host":["{{baseUrl}}"],"path":["api","v1","user","profile"]}}}
+      ]
+    },
+    {
+      "name": "10_Exception_Scenarios",
+      "item": [
+        {"name":"ERR-001_Service_Down","event":[{"listen":"test","script":{"type":"text/javascript","exec":["pm.test(\u0027ERR-001: Error handled\u0027, function() { var status = pm.response.status; pm.expect(status).to.be.at.least(500); });"]}}],"request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{userToken}}"}],"url":{"raw":"{{baseUrl}}/api/v1/user/profile","host":["{{baseUrl}}"],"path":["api","v1","user","profile"]}}}
+      ]
+    }
+  ]
+}

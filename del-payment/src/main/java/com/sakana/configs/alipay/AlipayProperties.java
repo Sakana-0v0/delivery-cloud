@@ -8,7 +8,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @Data
 @ConfigurationProperties(prefix = "alipay")
-public class AlipayProperties {
+public class
+AlipayProperties {
 
     /**
      * 支付宝应用ID

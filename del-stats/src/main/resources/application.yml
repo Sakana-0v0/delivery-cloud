@@ -19,6 +19,7 @@ spring:
   config:
     import:
       - optional:nacos:common-jwt.yml
+      - optional:nacos:common-redis.yml
       - optional:nacos:common-jackson.yml
       - optional:nacos:common-mybatis.yml
       - optional:nacos:common-actuator.yml

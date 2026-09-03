@@ -8,10 +8,11 @@ import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
-import org.springframework.amqp.support.converter.SimpleMessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 /**
  * del-order 侧的 RabbitMQ 拓扑。
@@ -20,7 +21,7 @@ import org.springframework.context.annotation.Configuration;
  * 发布 order.event.exchange（fanout） → 通知其他服务订单创建成功。
  */
 @Configuration
-public class RabbitMQConfig {
+public class OrderRabbitMQConfig {
 
     /** 支付成功事件 exchange（fanout，del-payment 发布） */
     public static final String PAID_EXCHANGE = "payment.order.paid.exchange";
@@ -34,19 +35,22 @@ public class RabbitMQConfig {
     /** 订单事件 fanout 交换机（本服务发布） */
     public static final String ORDER_EVENT_EXCHANGE = "order.event.exchange";
 
+    /**
+     * 主消息转换器（@Primary 解决与 del-product 的 RabbitMQConfig 冲突）
+     */
     @Bean
-    public MessageConverter orderMessageConverter() {
-        SimpleMessageConverter converter = new SimpleMessageConverter();
-        converter.addAllowedListPatterns("com.sakana.events.*");
-        return converter;
+    @Primary
+    public MessageConverter messageConverter() {
+        return new Jackson2JsonMessageConverter();
     }
 
     @Bean
     public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(
-            ConnectionFactory cf, MessageConverter mc) {
+            ConnectionFactory cf,
+            MessageConverter messageConverter) {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
         factory.setConnectionFactory(cf);
-        factory.setMessageConverter(mc);
+        factory.setMessageConverter(messageConverter);
         factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
         factory.setDefaultRequeueRejected(false);
         factory.setConcurrentConsumers(1);

@@ -2,6 +2,7 @@ package com.sakana.feign;
 
 import com.sakana.feign.dto.OrderStatsDTO;
 import com.sakana.feign.dto.SalesTrendDTO;
+import com.sakana.web.vo.R;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,24 +22,11 @@ import java.time.LocalDate;
 )
 public interface OrderStatsClient {
 
-    /**
-     * 获取今日订单统计数据
-     *
-     * @return 今日订单数和销售额
-     */
     @GetMapping("/internal/stats/today")
-    OrderStatsDTO getTodayStats();
+    R<OrderStatsDTO> getTodayStats();
 
-    /**
-     * 获取销售趋势数据
-     *
-     * @param granularity 粒度：day 或 month
-     * @param startDate   起始日期
-     * @param endDate     结束日期
-     * @return 销售趋势数据
-     */
     @GetMapping("/internal/stats/sales-trend")
-    SalesTrendDTO getSalesTrend(
+    R<SalesTrendDTO> getSalesTrend(
             @RequestParam(required = false, defaultValue = "day") String granularity,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate);

@@ -1,0 +1,2752 @@
+{
+	"info": {
+		"_postman_id": "delivery-cloud-microservices-v4",
+		"name": "DeliveryCloud API (通过网关)",
+		"description": "外卖微服务架构 API 测试集合 v4 - 适配迭代1-4完成、5-7未开始的现状\n\n## 迭代状态（2026-08-30 更新）\n- ✅ 迭代1: Outbox基础设施（del-order/del-payment/del-user Outbox表+Relay）\n- ✅ 迭代2: del-user 业务迁移\n- ✅ 迭代3: del-product 业务迁移\n- ✅ 迭代4: del-order 业务迁移（含 del-cart 合入）\n- ⬜ 迭代5: Feign统计接口 + del-stats 重构 —— **未开始**，统计接口当前会返回空数据\n- ⬜ 迭代6: del-message 邮件消费者 + 模板 —— **未开始**，当前消息服务仅提供 HTTP 读接口\n- ⬜ 迭代7: del-gateway 全链路测试\n\n## 接口说明\n- 默认通过 del-gateway 网关（http://localhost:9000）访问，全链路鉴权\n- 直连模式：变量 `{{service_base}}` 可切到各服务端口（详见下方 variables）\n- 所有需要鉴权的接口需在 Header 中携带 Authorization: Bearer {{user_token}} 或 {{admin_token}}\n- 登录成功后会自动将 token 保存到变量中\n\n## 服务端口（用于直连测试）\n| 服务 | 端口 | 状态 |\n|------|------|------|\n| del-gateway | 9000 | ✅ |\n| del-user | 10003 | ✅ 迭代2 |\n| del-product | 10000 | ✅ 迭代3 |\n| del-order | 10006 | ✅ 迭代4（含 cart）|\n| del-admin | 10002 | ⚠️ 控制器存在，登录需数据库初始化 |\n| del-payment | 8077 | ⚠️ 控制器存在 |\n| del-message | 10010 | ⚠️ 仅 HTTP 读接口，邮件消费未实现 |\n| del-stats | - | ⬜ 空实现，所有方法返回空 |\n\n## 重要更新 (v4)\n- 拆分 user_token / admin_token：管理后台用独立 JWT 池\n- del-cart 已合入 del-order：路由 `/api/v1/cart/**` 实际打到 del-order\n- 新增 `service_base` 变量：可切到各服务端口直连调试\n- 统计区块 (del-stats) 加了 ⚠️ 警告，当前会返回空数据",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "gateway_base",
+			"value": "http://localhost:9000",
+			"description": "del-gateway 网关地址（默认）"
+		},
+		{
+			"key": "service_base",
+			"value": "http://localhost:10006",
+			"description": "直连服务地址，切换端口可绕过网关：10003=user / 10000=product / 10006=order / 10002=admin / 8077=payment / 10010=message"
+		},
+		{
+			"key": "user_token",
+			"value": "",
+			"description": "C 端用户 JWT（user-pool 密钥签发）"
+		},
+		{
+			"key": "refresh_token",
+			"value": ""
+		},
+		{
+			"key": "admin_token",
+			"value": "",
+			"description": "B 端管理员 JWT（admin-pool 密钥签发）"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{user_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "0. 健康检查（启动后先跑这一组确认哪些服务在线）",
+			"item": [
+				{
+					"name": "del-gateway 9000 - 根路径",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('del-gateway 在线', function() {",
+									"    pm.response.to.have.status(200);",
+									"    console.log('✓ del-gateway :9000 在响应');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/actuator/health",
+							"host": ["{{gateway_base}}"],
+							"path": ["actuator", "health"]
+						},
+						"description": "检查 del-gateway 是否在线（/actuator/health）"
+					},
+					"response": []
+				},
+				{
+					"name": "del-user 10003 - 健康检查",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('del-user 在线', function() {",
+									"    pm.response.to.have.status(200);",
+									"    console.log('✓ del-user :10003 在响应');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:10003/actuator/health",
+							"host": ["localhost"],
+							"port": "10003",
+							"path": ["actuator", "health"]
+						},
+						"description": "直连 del-user 健康检查"
+					},
+					"response": []
+				},
+				{
+					"name": "del-product 10000 - 健康检查",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('del-product 在线', function() {",
+									"    pm.response.to.have.status(200);",
+									"    console.log('✓ del-product :10000 在响应');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:10000/actuator/health",
+							"host": ["localhost"],
+							"port": "10000",
+							"path": ["actuator", "health"]
+						},
+						"description": "直连 del-product 健康检查"
+					},
+					"response": []
+				},
+				{
+					"name": "del-order 10006 - 健康检查",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('del-order 在线', function() {",
+									"    pm.response.to.have.status(200);",
+									"    console.log('✓ del-order :10006 在响应');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:10006/actuator/health",
+							"host": ["localhost"],
+							"port": "10006",
+							"path": ["actuator", "health"]
+						},
+						"description": "直连 del-order 健康检查（迭代4 已修复启动问题）"
+					},
+					"response": []
+				},
+				{
+					"name": "del-payment 8077 - 健康检查",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('del-payment 在线', function() {",
+									"    pm.response.to.have.status(200);",
+									"    console.log('✓ del-payment :8077 在响应');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8077/actuator/health",
+							"host": ["localhost"],
+							"port": "8077",
+							"path": ["actuator", "health"]
+						},
+						"description": "直连 del-payment 健康检查"
+					},
+					"response": []
+				},
+				{
+					"name": "del-message 10010 - 健康检查",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('del-message 在线', function() {",
+									"    pm.response.to.have.status(200);",
+									"    console.log('✓ del-message :10010 在响应');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:10010/actuator/health",
+							"host": ["localhost"],
+							"port": "10010",
+							"path": ["actuator", "health"]
+						},
+						"description": "直连 del-message 健康检查"
+					},
+					"response": []
+				},
+				{
+					"name": "del-admin 10002 - 健康检查",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('del-admin 在线', function() {",
+									"    pm.response.to.have.status(200);",
+									"    console.log('✓ del-admin :10002 在响应');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:10002/actuator/health",
+							"host": ["localhost"],
+							"port": "10002",
+							"path": ["actuator", "health"]
+						},
+						"description": "直连 del-admin 健康检查"
+					},
+					"response": []
+				},
+				{
+					"name": "del-user - 公开商品列表（确认 DB 通了）",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('商品列表返回成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"    console.log('✓ del-product DB 在线，当前商品数: ' + (jsonData.data ? jsonData.data.records ? jsonData.data.records.length : 'N/A' : 'N/A'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/products?page=1&size=5",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "products"],
+							"query": [
+								{"key": "page", "value": "1"},
+								{"key": "size", "value": "5"}
+							]
+						},
+						"description": "公开接口：分页查询商品列表（不需要 token）。如果能返回 code=0，说明网关 + del-product + MySQL 链路通了。"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "1. del-user 用户服务（通过网关）✅ 迭代2",
+			"item": [
+				{
+					"name": "发送验证码",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('响应成功', function() {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test@example.com\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/auth/send-code",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "auth", "send-code"]
+						},
+						"description": "发送邮箱验证码，用于注册"
+					},
+					"response": []
+				},
+				{
+					"name": "用户注册",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('注册成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"testuser01\",\n    \"password\": \"Password123!\",\n    \"phone\": \"13800138000\",\n    \"email\": \"test01@example.com\",\n    \"code\": \"123456\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/auth/register",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "auth", "register"]
+						},
+						"description": "用户注册，需要先发送验证码获取 code"
+					},
+					"response": []
+				},
+				{
+					"name": "用户登录",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if(jsonData.data && jsonData.data.accessToken) {",
+									"    pm.collectionVariables.set('user_token', jsonData.data.accessToken);",
+									"    pm.collectionVariables.set('refresh_token', jsonData.data.refreshToken);",
+									"    console.log('已设置 user_token 和 refresh_token');",
+									"    console.log('expiresIn: ' + jsonData.data.expiresIn);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"testuser\",\n    \"password\": \"Password123!\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/auth/login",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "auth", "login"]
+						},
+						"description": "用户登录，成功后自动设置 accessToken 和 refreshToken 到变量"
+					},
+					"response": []
+				},
+				{
+					"name": "刷新Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if(jsonData.data && jsonData.data.accessToken) {",
+									"    pm.collectionVariables.set('user_token', jsonData.data.accessToken);",
+									"    pm.collectionVariables.set('refresh_token', jsonData.data.refreshToken);",
+									"    console.log('Token已刷新');",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"refreshToken\": \"{{refresh_token}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/auth/refresh",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "auth", "refresh"]
+						},
+						"description": "使用 refreshToken 刷新 accessToken"
+					},
+					"response": []
+				},
+				{
+					"name": "用户登出",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('登出成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});",
+									"pm.collectionVariables.set('user_token', '');",
+									"pm.collectionVariables.set('refresh_token', '');"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/auth/logout",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "auth", "logout"]
+						},
+						"description": "用户登出，将 token 加入黑名单"
+					},
+					"response": []
+				},
+				{
+					"name": "我的收货地址 - 地址列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取地址列表成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/user/addresses",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "user", "addresses"]
+						},
+						"description": "获取当前用户的收货地址列表"
+					},
+					"response": []
+				},
+				{
+					"name": "我的收货地址 - 新增地址",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('新增地址成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"receiver\": \"张三\",\n    \"phone\": \"13800138000\",\n    \"province\": \"北京市\",\n    \"city\": \"北京市\",\n    \"district\": \"朝阳区\",\n    \"detail\": \"某街道某号\",\n    \"isDefault\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/user/addresses",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "user", "addresses"]
+						},
+						"description": "新增收货地址\n\n字段说明：\n- receiver: 收货人姓名\n- phone: 联系电话\n- province/city/district: 省/市/区\n- detail: 详细地址\n- isDefault: 是否默认 (0/1)"
+					},
+					"response": []
+				},
+				{
+					"name": "我的收货地址 - 修改地址",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('修改地址成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"receiver\": \"张三新\",\n    \"phone\": \"13900139000\",\n    \"province\": \"北京市\",\n    \"city\": \"北京市\",\n    \"district\": \"海淀区\",\n    \"detail\": \"新街道新号\",\n    \"isDefault\": 0\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/user/addresses/1",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "user", "addresses", "1"]
+						},
+						"description": "修改收货地址，ID需替换为实际地址ID"
+					},
+					"response": []
+				},
+				{
+					"name": "我的收货地址 - 删除地址",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('删除地址成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/user/addresses/1",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "user", "addresses", "1"]
+						},
+						"description": "删除收货地址，ID需替换为实际地址ID"
+					},
+					"response": []
+				},
+				{
+					"name": "我的收货地址 - 设为默认",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('设置默认地址成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/user/addresses/1/default",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "user", "addresses", "1", "default"]
+						},
+						"description": "将指定地址设为默认收货地址，ID需替换为实际地址ID"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "2. del-product 商品服务（通过网关）✅ 迭代3",
+			"item": [
+				{
+					"name": "分类列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取分类列表成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/categories",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "categories"]
+						},
+						"description": "获取所有启用的分类列表（公开接口）"
+					},
+					"response": []
+				},
+				{
+					"name": "商品分页",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取商品分页成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/products?page=1&size=10",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "products"],
+							"query": [
+								{
+									"key": "categoryId",
+									"value": "",
+									"description": "分类ID筛选（可选）"
+								},
+								{
+									"key": "keyword",
+									"value": "",
+									"description": "关键词搜索（可选）"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "10"
+								}
+							]
+						},
+						"description": "分页查询商品列表，支持分类筛选和关键词搜索"
+					},
+					"response": []
+				},
+				{
+					"name": "商品详情",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取商品详情成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/products/1",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "products", "1"]
+						},
+						"description": "获取商品详细信息（公开接口）"
+					},
+					"response": []
+				},
+				{
+					"name": "热门商品",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取热门商品成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/products/hot?limit=10",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "products", "hot"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "10",
+									"description": "返回数量"
+								}
+							]
+						},
+						"description": "获取销量最高的N个商品"
+					},
+					"response": []
+				},
+				{
+					"name": "评价开关状态",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取评价开关状态成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/reviews/switch",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "reviews", "switch"]
+						},
+						"description": "查询 👍/👎 评价开关状态"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "3. del-cart 购物车服务（已合入 del-order，路径 /api/v1/cart/** 实际由 del-order 提供）",
+			"item": [
+				{
+					"name": "查看购物车",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取购物车成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/cart",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "cart"]
+						},
+						"description": "查看当前用户的购物车内容"
+					},
+					"response": []
+				},
+				{
+					"name": "添加商品到购物车",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('添加购物车成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"productId\": 1,\n    \"quantity\": 2\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/cart/items",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "cart", "items"]
+						},
+						"description": "添加商品到购物车\n\n字段说明：\n- productId: 商品ID\n- quantity: 数量（必须 >= 1）"
+					},
+					"response": []
+				},
+				{
+					"name": "修改购物车商品数量",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('修改数量成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"quantity\": 3\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/cart/items/1",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "cart", "items", "1"]
+						},
+						"description": "修改购物车商品数量\n\n说明：quantity=0 等同于删除该商品"
+					},
+					"response": []
+				},
+				{
+					"name": "删除购物车商品",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('删除商品成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/cart/items/1",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "cart", "items", "1"]
+						},
+						"description": "从购物车删除指定商品，productId需替换为实际商品ID"
+					},
+					"response": []
+				},
+				{
+					"name": "清空购物车",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('清空购物车成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/cart",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "cart"]
+						},
+						"description": "清空当前用户的购物车所有商品"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "4. del-order 订单服务（通过网关）✅ 迭代4",
+			"item": [
+				{
+					"name": "创建订单",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('创建订单成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"receiverName\": \"张三\",\n    \"receiverPhone\": \"13800138000\",\n    \"receiverAddress\": \"北京市朝阳区某街道某号\",\n    \"remark\": \"请尽快发货\",\n    \"items\": [\n        {\n            \"productId\": 1,\n            \"productName\": \"商品名称\",\n            \"productCover\": \"https://example.com/cover.jpg\",\n            \"productPrice\": 29.90,\n            \"quantity\": 2\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/user/orders",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "user", "orders"]
+						},
+						"description": "创建新订单\n\n字段说明：\n- receiverName: 收货人姓名\n- receiverPhone: 收货人电话\n- receiverAddress: 收货地址\n- remark: 订单备注（可选）\n- items: 商品列表（至少一个）\n  - productId/productName/productPrice: 商品快照信息\n  - quantity: 购买数量"
+					},
+					"response": []
+				},
+				{
+					"name": "我的订单 - 订单列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取订单列表成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/user/orders?page=1&size=10",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "user", "orders"],
+							"query": [
+								{
+									"key": "status",
+									"value": "",
+									"description": "订单状态：1待支付 2已支付 3配送中 4已完成 5已取消（可选）"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "10"
+								}
+							]
+						},
+						"description": "分页查询当前用户的订单列表"
+					},
+					"response": []
+				},
+				{
+					"name": "我的订单 - 订单详情",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取订单详情成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/user/orders/1",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "user", "orders", "1"]
+						},
+						"description": "获取订单详细信息，ID需替换为实际订单ID"
+					},
+					"response": []
+				},
+				{
+					"name": "我的订单 - 取消订单",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('取消订单成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/user/orders/1/cancel",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "user", "orders", "1", "cancel"]
+						},
+						"description": "取消订单（仅待支付状态可取消）"
+					},
+					"response": []
+				},
+				{
+					"name": "我的订单 - 确认收货",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('确认收货成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/user/orders/1/confirm",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "user", "orders", "1", "confirm"]
+						},
+						"description": "确认收货（仅配送中状态可确认）"
+					},
+					"response": []
+				},
+				{
+					"name": "商品评价投票",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('评价投票成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"type\": \"like\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/orders/1/items/1/vote",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "orders", "1", "items", "1", "vote"]
+						},
+						"description": "对订单商品进行点赞/点踩/取消评价\n\n路径说明：\n- orders/{orderId}: 订单ID\n- items/{productId}: 订单中的商品ID\n\nbody说明：\n- type: \"like\" 点赞 / \"bad\" 点踩 / null 取消评价"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "5. del-payment 支付服务（通过网关）⚠️ 控制器存在；迭代1 已完成 Outbox 基础设施，完整业务流待迭代",
+			"item": [
+				{
+					"name": "创建支付",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('创建支付成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"orderId\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/payments",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "payments"]
+						},
+						"description": "为订单创建支付，获取支付链接/表单"
+					},
+					"response": []
+				},
+				{
+					"name": "查询支付状态",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('查询支付状态成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/payments/ORDER123456",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "payments", "ORDER123456"]
+						},
+						"description": "通过订单号查询支付状态"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "6. del-message 消息服务（通过网关）⚠️ 邮件消费者未实现（迭代6 未开始），当前仅 HTTP 读接口可用",
+			"item": [
+				{
+					"name": "我的消息 - 消息列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取消息列表成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/messages?page=1&size=10",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "messages"],
+							"query": [
+								{
+									"key": "isRead",
+									"value": "",
+									"description": "是否已读：0未读 1已读（可选）"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "10"
+								}
+							]
+						},
+						"description": "分页查询当前用户的站内消息"
+					},
+					"response": []
+				},
+				{
+					"name": "我的消息 - 未读数量",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取未读数量成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/messages/unread-count",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "messages", "unread-count"]
+						},
+						"description": "获取当前用户的未读消息数量"
+					},
+					"response": []
+				},
+				{
+					"name": "我的消息 - 标记已读",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('标记已读成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/messages/1/read",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "messages", "1", "read"]
+						},
+						"description": "将指定消息标记为已读，ID需替换为实际消息ID"
+					},
+					"response": []
+				},
+				{
+					"name": "我的消息 - 全部已读",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('全部已读成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{user_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/messages/read-all",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "messages", "read-all"]
+						},
+						"description": "将当前用户的所有消息标记为已读"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "7. del-admin 管理后台（通过网关）⚠️ 控制器存在，未走迭代；管理员账号 admin/admin123 需在 del_admin_db 预置",
+			"item": [
+				{
+					"name": "管理员登录",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if(jsonData.data && jsonData.data.accessToken) {",
+									"    pm.collectionVariables.set('admin_token', jsonData.data.accessToken);",
+									"    console.log('已设置 admin_token');",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"admin\",\n    \"password\": \"admin123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/auth/login",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "auth", "login"]
+						},
+						"description": "管理员登录，成功后自动设置 admin_token 到变量\n\n默认账号：admin / admin123"
+					},
+					"response": []
+				},
+				{
+					"name": "管理员信息",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取管理员信息成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/auth/me",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "auth", "me"]
+						},
+						"description": "获取当前登录的管理员信息"
+					},
+					"response": []
+				},
+				{
+					"name": "管理员登出",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('登出成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});",
+									"pm.collectionVariables.set('admin_token', '');"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/auth/logout",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "auth", "logout"]
+						},
+						"description": "管理员登出，将 token 加入黑名单"
+					},
+					"response": []
+				},
+				{
+					"name": "商品管理 - 商品列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取商品列表成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/products?page=1&size=10",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "products"],
+							"query": [
+								{
+									"key": "categoryId",
+									"value": "",
+									"description": "分类ID筛选（可选）"
+								},
+								{
+									"key": "keyword",
+									"value": "",
+									"description": "关键词搜索（可选）"
+								},
+								{
+									"key": "status",
+									"value": "",
+									"description": "状态：0上架 1下架（可选）"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "10"
+								}
+							]
+						},
+						"description": "管理后台 - 商品分页（含上下架、库存、销量）"
+					},
+					"response": []
+				},
+				{
+					"name": "商品管理 - 新增商品",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('新增商品成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"categoryId\": 1,\n    \"name\": \"测试商品\",\n    \"cover\": \"https://example.com/cover.jpg\",\n    \"description\": \"商品描述\",\n    \"normPrice\": 39.90,\n    \"realPrice\": 29.90,\n    \"stock\": 100,\n    \"status\": 0\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/products",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "products"]
+						},
+						"description": "管理后台 - 新增商品\n\n字段说明：\n- categoryId: 分类ID（必填）\n- name: 商品名称（必填）\n- normPrice: 原价（必填）\n- realPrice: 现价（必填）\n- stock: 库存（必填）\n- status: 0上架 1下架（默认0）"
+					},
+					"response": []
+				},
+				{
+					"name": "商品管理 - 修改商品",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('修改商品成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"categoryId\": 1,\n    \"name\": \"测试商品修改\",\n    \"cover\": \"https://example.com/cover.jpg\",\n    \"description\": \"修改后的商品描述\",\n    \"normPrice\": 49.90,\n    \"realPrice\": 39.90,\n    \"stock\": 200,\n    \"status\": 0\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/products/1",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "products", "1"]
+						},
+						"description": "管理后台 - 修改商品信息\n\n注意：库存调整需使用专门的 /stock 接口"
+					},
+					"response": []
+				},
+				{
+					"name": "商品管理 - 上下架",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('修改上下架状态成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": 0\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/products/1/status",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "products", "1", "status"]
+						},
+						"description": "管理后台 - 商品上/下架\n\nstatus: 0=上架 1=下架"
+					},
+					"response": []
+				},
+				{
+					"name": "商品管理 - 调整库存",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('调整库存成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"stock\": 150\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/products/1/stock",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "products", "1", "stock"]
+						},
+						"description": "管理后台 - 调整库存\n\n二选一：\n- stock: 设置库存到指定值（绝对值）\n- delta: 增减量（可负数）\n\n示例：{\"stock\": 150} 或 {\"delta\": -10}"
+					},
+					"response": []
+				},
+				{
+					"name": "商品管理 - 删除商品",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('删除商品成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/products/1",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "products", "1"]
+						},
+						"description": "管理后台 - 删除商品（逻辑删除）"
+					},
+					"response": []
+				},
+				{
+					"name": "分类管理 - 分类列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取分类列表成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/categories?page=1&size=10",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "categories"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "10"
+								}
+							]
+						},
+						"description": "管理后台 - 分类列表（含禁用的分类）"
+					},
+					"response": []
+				},
+				{
+					"name": "分类管理 - 新增分类",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('新增分类成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"新分类\",\n    \"sort\": 0,\n    \"status\": 0\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/categories",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "categories"]
+						},
+						"description": "管理后台 - 新增分类\n\n字段说明：\n- name: 分类名称（必填）\n- sort: 排序（升序，默认0）\n- status: 0启用 1禁用（默认0）"
+					},
+					"response": []
+				},
+				{
+					"name": "分类管理 - 修改分类",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('修改分类成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"修改后的分类名\",\n    \"sort\": 1,\n    \"status\": 0\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/categories/1",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "categories", "1"]
+						},
+						"description": "管理后台 - 修改分类"
+					},
+					"response": []
+				},
+				{
+					"name": "分类管理 - 删除分类",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('删除分类成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/categories/1",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "categories", "1"]
+						},
+						"description": "管理后台 - 删除分类（前置校验：该分类下不能有商品）"
+					},
+					"response": []
+				},
+				{
+					"name": "订单管理 - 订单列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取订单列表成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/orders?page=1&size=10",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "orders"],
+							"query": [
+								{
+									"key": "status",
+									"value": "",
+									"description": "订单状态：1待支付 2已支付 3配送中 4已完成 5已取消（可选）"
+								},
+								{
+									"key": "userId",
+									"value": "",
+									"description": "用户ID精确过滤（可选）"
+								},
+								{
+									"key": "orderNo",
+									"value": "",
+									"description": "订单号模糊搜索（可选）"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "10"
+								}
+							]
+						},
+						"description": "管理后台 - 订单分页查询，支持多条件筛选"
+					},
+					"response": []
+				},
+				{
+					"name": "订单管理 - 订单详情",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取订单详情成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/orders/1",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "orders", "1"]
+						},
+						"description": "管理后台 - 订单详情（带订单项）"
+					},
+					"response": []
+				},
+				{
+					"name": "订单管理 - 修改订单状态",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('修改订单状态成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": 3,\n    \"remark\": \"后台修改备注\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/orders/1/status",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "orders", "1", "status"]
+						},
+						"description": "管理后台 - 修改订单状态（状态机校验）\n\n字段说明：\n- status: 目标状态 1待支付 2已支付 3配送中 4已完成 5已取消\n- remark: 修改原因（仅记录到日志，便于审计）\n- ID需替换为实际订单ID"
+					},
+					"response": []
+				},
+				{
+					"name": "用户管理 - 用户列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取用户列表成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/users?page=1&size=10",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "users"],
+							"query": [
+								{
+									"key": "keyword",
+									"value": "",
+									"description": "关键词：用户名/手机号/邮箱模糊搜索（可选）"
+								},
+								{
+									"key": "status",
+									"value": "",
+									"description": "状态：0正常 1冻结（可选）"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "10"
+								}
+							]
+						},
+						"description": "管理后台 - 用户列表（多条件分页）"
+					},
+					"response": []
+				},
+				{
+					"name": "用户管理 - 冻结/解冻用户",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('修改用户状态成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": 0\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/users/1/status",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "users", "1", "status"]
+						},
+						"description": "管理后台 - 冻结/解冻用户\n\nstatus: 0=正常 1=冻结"
+					},
+					"response": []
+				},
+				{
+					"name": "收货地址管理 - 地址列表",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取地址列表成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/addresses?page=1&size=10",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "addresses"],
+							"query": [
+								{
+									"key": "userId",
+									"value": "",
+									"description": "用户ID精确过滤（可选）"
+								},
+								{
+									"key": "keyword",
+									"value": "",
+									"description": "关键词：姓名/手机号模糊搜索（可选）"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "10"
+								}
+							]
+						},
+						"description": "管理后台 - 收货地址分页（按用户ID/姓名/手机号筛选）"
+					},
+					"response": []
+				},
+				{
+					"name": "收货地址管理 - 强制删除地址",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('删除地址成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/addresses/1",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "addresses", "1"]
+						},
+						"description": "管理后台 - 强制删除收货地址，ID需替换为实际地址ID"
+					},
+					"response": []
+				},
+				{
+					"name": "评价管理 - 评价开关状态",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('获取评价开关状态成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/reviews/switch",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "reviews", "switch"]
+						},
+						"description": "管理后台 - 查询当前两开关状态"
+					},
+					"response": []
+				},
+				{
+					"name": "评价管理 - 开启/关闭 👍 评价",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('设置评价开关成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"open\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/reviews/praise",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "reviews", "praise"]
+						},
+						"description": "管理后台 - 开/关 👍 评价\n\nopen: 1=开启 0=关闭"
+					},
+					"response": []
+				},
+				{
+					"name": "评价管理 - 开启/关闭 👎 评价",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('设置评价开关成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"open\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/reviews/bad",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "reviews", "bad"]
+						},
+						"description": "管理后台 - 开/关 👎 评价\n\nopen: 1=开启 0=关闭"
+					},
+					"response": []
+				},
+				{
+					"name": "统计 - 数据概览",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// ⚠️ del-stats 当前为空实现（迭代5 未开始），会返回 code=0 但 data 全 0 / 空列表",
+									"pm.test('接口调用成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"    console.warn('[警告] del-stats 当前为空实现，data 字段全部为零/空，等待迭代5');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/stats/overview",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "stats", "overview"]
+						},
+						"description": "管理后台 - 数据概览：今日订单数/销售额/累计用户/今日新用户\n\n⚠️ 当前 del-stats 为空实现，返回全部为 0"
+					},
+					"response": []
+				},
+				{
+					"name": "统计 - 销售趋势",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// ⚠️ del-stats 当前为空实现（迭代5 未开始）",
+									"pm.test('接口调用成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"    console.warn('[警告] del-stats 当前为空实现，data 字段为空白数组，等待迭代5');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/stats/sales?granularity=day",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "stats", "sales"],
+							"query": [
+								{
+									"key": "granularity",
+									"value": "day",
+									"description": "粒度：day | month"
+								},
+								{
+									"key": "startDate",
+									"value": "",
+									"description": "起始日期 yyyy-MM-dd（可选）"
+								},
+								{
+									"key": "endDate",
+									"value": "",
+									"description": "截止日期 yyyy-MM-dd（可选）"
+								}
+							]
+						},
+						"description": "管理后台 - 销售趋势（按日/按月聚合）\n\n⚠️ 当前 del-stats 为空实现，返回 data=[]"
+					},
+					"response": []
+				},
+				{
+					"name": "统计 - 热门商品",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// ⚠️ del-stats 当前为空实现（迭代5 未开始）",
+									"pm.test('接口调用成功', function() {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.code).to.eql(0);",
+									"    console.warn('[警告] del-stats 当前为空实现，data 字段为空白数组，等待迭代5');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{admin_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{gateway_base}}/api/v1/admin/stats/hot-products?limit=10",
+							"host": ["{{gateway_base}}"],
+							"path": ["api", "v1", "admin", "stats", "hot-products"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "10",
+									"description": "返回数量，默认10，最大100"
+								}
+							]
+						},
+						"description": "管理后台 - 热门商品 Top N（按销量倒序）\n\n⚠️ 当前 del-stats 为空实现，返回 data=[]"
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

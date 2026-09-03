@@ -1,6 +1,7 @@
 package com.sakana.feign;
 
 import com.sakana.feign.dto.HotProductVO;
+import com.sakana.web.vo.R;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.openfeign.FallbackFactory;
 import org.springframework.stereotype.Component;
@@ -9,7 +10,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * ProductStatsClient 降级工厂
+ * ProductStatsClient fallback factory.
  */
 @Slf4j
 @Component
@@ -17,13 +18,13 @@ public class ProductStatsClientFallbackFactory implements FallbackFactory<Produc
 
     @Override
     public ProductStatsClient create(Throwable cause) {
-        log.error("[ProductStatsClient] Feign 调用失败，进入降级逻辑: {}", cause.getMessage());
+        log.error("[ProductStatsClient] Feign call failed: {}", cause.getMessage());
 
         return new ProductStatsClient() {
             @Override
-            public List<HotProductVO> getHotProducts(int limit) {
-                log.warn("[ProductStatsClient] 降级返回：热卖商品为空");
-                return Collections.emptyList();
+            public R<List<HotProductVO>> getHotProducts(int limit) {
+                log.warn("[ProductStatsClient] fallback: hot products empty");
+                return R.ok(Collections.emptyList());
             }
         };
     }

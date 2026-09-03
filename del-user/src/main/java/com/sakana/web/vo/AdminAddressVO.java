@@ -1,15 +1,14 @@
 package com.sakana.web.vo;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
-/**
- * 管理后台 - 收货地址记录
- */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class AdminAddressVO implements Serializable {
 
     @Serial

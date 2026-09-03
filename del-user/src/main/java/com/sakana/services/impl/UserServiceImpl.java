@@ -23,6 +23,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -91,19 +93,24 @@ public class UserServiceImpl implements UserService {
         log.info("[用户注册] 成功: userId={}, username={}", user.getId(), user.getUsername());
 
         // 写入 outbox 表（同一事务），由 UserEventOutboxRelay 投递到 MQ
+        // 使用 payload JSON 字段存储事件数据
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("eventId", generateEventId());
+        payload.put("userId", user.getId());
+        payload.put("username", user.getUsername());
+        payload.put("email", user.getEmail());
+
         UserEventOutbox outbox = new UserEventOutbox();
-        outbox.setEventId(generateEventId());
         outbox.setEventType("REGISTER");
         outbox.setUserId(user.getId());
-        outbox.setUsername(user.getUsername());
-        outbox.setEmail(user.getEmail());
+        outbox.setPayload(payload);
         outbox.setStatus(0); // NEW
         outbox.setRetryCount(0);
         outbox.setCreateTime(LocalDateTime.now());
         outbox.setUpdateTime(LocalDateTime.now());
         userEventOutboxMapper.insert(outbox);
 
-        log.info("[用户注册] outbox 已写入: eventId={}", outbox.getEventId());
+        log.info("[用户注册] outbox 已写入: eventId={}", payload.get("eventId"));
 
         return user;
     }

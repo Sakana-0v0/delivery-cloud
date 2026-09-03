@@ -2,7 +2,7 @@ package com.sakana.events;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.rabbitmq.client.Channel;
-import com.sakana.configs.RabbitMQConfig;
+import com.sakana.configs.OrderRabbitMQConfig;
 import com.sakana.dao.entity.Order;
 import com.sakana.dao.mapper.OrderMapper;
 import com.sakana.enums.OrderStatus;
@@ -32,7 +32,7 @@ public class PaymentResultConsumer {
     private final OrderMapper orderMapper;
 
     @RabbitListener(
-            queues = RabbitMQConfig.ORDER_PAID_QUEUE,
+            queues = OrderRabbitMQConfig.ORDER_PAID_QUEUE,
             containerFactory = "rabbitListenerContainerFactory"
     )
     public void onPaid(@Payload OrderPaidPayload payload,

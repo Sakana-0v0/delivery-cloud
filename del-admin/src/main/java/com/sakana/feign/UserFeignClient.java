@@ -6,6 +6,7 @@ import com.sakana.web.vo.AdminAddressPageResp;
 import com.sakana.web.vo.AdminUserPageResp;
 import com.sakana.web.vo.R;
 import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.cloud.openfeign.SpringQueryMap;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -16,8 +17,8 @@ public interface UserFeignClient {
 
     // ==================== 用户管理 ====================
 
-    @GetMapping("/internal/admin/users/")
-    R<AdminUserPageResp> getUserPage(AdminUserListQuery query);
+    @GetMapping("/internal/admin/users")
+    R<AdminUserPageResp> getUserPage(@SpringQueryMap AdminUserListQuery query);
 
     @GetMapping("/internal/admin/users/{id}")
     R<Object> getUserDetail(@PathVariable("id") Long id);

@@ -47,6 +47,7 @@ public class ProductStatsServiceImpl implements ProductStatsService {
                     vo.setProductName(product.getName());
                     vo.setCover(product.getCover());
                     vo.setSales(product.getSales());
+                    vo.setRealPrice(product.getRealPrice());
                     return vo;
                 })
                 .collect(Collectors.toList());

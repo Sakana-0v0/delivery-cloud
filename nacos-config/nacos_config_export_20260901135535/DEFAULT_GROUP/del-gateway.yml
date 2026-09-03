@@ -1,0 +1,99 @@
+spring:
+  application:
+    name: del-gateway
+  cloud:
+    gateway:
+      # CORS 全局跨域配置
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowed-origins:
+              - "http://localhost:5173"
+              - "http://localhost:5174"
+            allowed-methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowed-headers:
+              - "*"
+            allow-credentials: true
+            max-age: 3600
+      # 网关路由配置
+      routes:
+        # ==================== C 端路由 ====================
+        # del-user 用户服务（登录/注册/用户信息/地址）
+        - id: del-user
+          uri: lb://del-user
+          predicates:
+            - Path=/api/v1/auth/**,/api/v1/user/addresses/**
+          filters:
+            - StripPrefix=0
+
+        # del-order 订单服务（订单/购物车/用户订单/管理员订单）
+        # 注意：/api/v1/user/orders/** 属于 del-order（OrderController 在 del-order）
+        # 注意：/api/v1/admin/orders/** 属于 del-order（AdminOrderController 在 del-order）
+        - id: del-order
+          uri: lb://del-order
+          predicates:
+            - Path=/api/v1/orders/**,/api/v1/cart/**,/api/v1/user/orders/**,/api/v1/admin/orders/**
+          filters:
+            - StripPrefix=0
+
+        # del-product 商品服务（商品/分类/评价/投票/管理员商品/管理员分类/管理员评价）
+        - id: del-product
+          uri: lb://del-product
+          predicates:
+            - Path=/api/v1/products/**,/api/v1/categories/**,/api/v1/reviews/**,/api/v1/orders/*/items/*/vote,/api/v1/admin/products/**,/api/v1/admin/categories/**,/api/v1/admin/reviews/**
+          filters:
+            - StripPrefix=0
+
+        # del-message 消息服务（站内信）
+        - id: del-message
+          uri: lb://del-message
+          predicates:
+            - Path=/api/v1/messages/**
+          filters:
+            - StripPrefix=0
+
+        # del-payment 支付服务
+        - id: del-payment
+          uri: lb://del-payment
+          predicates:
+            - Path=/api/v1/payments/**
+          filters:
+            - StripPrefix=0
+
+        # del-stats 统计服务
+        - id: del-stats
+          uri: lb://del-stats
+          predicates:
+            - Path=/api/v1/stats/**,/api/v1/admin/stats/**,/api/v1/internal/stats/**
+          filters:
+            - StripPrefix=0
+
+        # del-file 文件服务（上传/查询/删除）
+        - id: del-file
+          uri: lb://del-file
+          predicates:
+            - Path=/api/v1/files/**
+          filters:
+            - StripPrefix=0
+
+        # ==================== B 端路由（管理后台） ====================
+        - id: del-admin
+          uri: lb://del-admin
+          predicates:
+            - Path=/api/v1/admin/auth/**,/api/v1/admin/users/**,/api/v1/admin/addresses/**
+          filters:
+            - StripPrefix=0
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always

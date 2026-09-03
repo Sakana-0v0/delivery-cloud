@@ -1,15 +1,14 @@
 package com.sakana.web.vo;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
-/**
- * 用户收货地址视图
- */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class UserAddressVO implements Serializable {
 
     @Serial
@@ -25,7 +24,6 @@ public class UserAddressVO implements Serializable {
     private String city;
     private String district;
     private String detail;
-    /** 拼接后的完整地址 */
     private String fullAddress;
     private Integer isDefault;
     private LocalDateTime createTime;

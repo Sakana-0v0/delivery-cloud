@@ -1,5 +1,7 @@
 package com.sakana.web.controllers;
 
+import java.util.List;
+
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.sakana.dto.request.CategoryReq;
 import com.sakana.services.CategoryService;
@@ -30,6 +32,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminCategoryController {
 
     private final CategoryService categoryService;
+
+    @GetMapping("/all")
+    @Operation(summary = "获取所有分类（全量，下拉框专用）")
+    public R<List<CategoryVO>> getAll() {
+        return R.ok(categoryService.adminGetAll());
+    }
 
     @GetMapping
     @Operation(summary = "分类列表（管理后台，含禁用）")

@@ -24,6 +24,7 @@ spring:
   config:
     import:
       - optional:nacos:common-jwt.yml
+      - optional:nacos:common-redis.yml
       - optional:nacos:common-actuator.yml
       - optional:nacos:del-gateway.yml
 
