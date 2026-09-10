@@ -1,0 +1,39 @@
+server:
+  port: 10011
+
+spring:
+  application:
+    name: del-cs
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+        namespace: sakana
+      config:
+        server-addr: 127.0.0.1:8848
+        namespace: sakana
+        group: DEFAULT_GROUP
+  config:
+    import:
+      - optional:nacos:common-jwt.yml
+      - optional:nacos:common-jackson.yml
+      - optional:nacos:common-redis.yml
+      - optional:nacos:common-actuator.yml
+      - optional:nacos:del-cs.yml
+      - optional:nacos:del-cs-prompt.yml
+
+  autoconfigure:
+    exclude:
+      # 排除数据库自动配置（del-cs 不连 MySQL）
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      # 排除 MyBatis-Plus 自动配置（避免被 del-product/del-order 的 Mapper 污染）
+      - com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration
+      # 排除 ES 自动配置（del-cs 不需要搜索索引）
+      - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration
+      - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchClientAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration
+      - org.springframework.boot.actuate.autoconfigure.data.elasticsearch.ElasticsearchReactiveHealthContributorAutoConfiguration
+      # 排除 RabbitMQ 自动配置
+      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration

@@ -16,6 +16,7 @@ import com.sakana.security.TokenBlacklist;
 import com.sakana.services.UserService;
 import com.sakana.services.VerifyCodeService;
 import com.sakana.web.vo.AdminUserPageResp;
+import com.sakana.web.vo.AdminUserVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,8 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 用户服务实现（C 端 + B 端）
@@ -124,6 +127,54 @@ public class UserServiceImpl implements UserService {
         );
     }
 
+
+    // ==================== QQ 第三方登录 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public User getOrCreateQqUser(String openId, String nickname, String avatar) {
+        // 1. 尝试查找已有用户
+        User existing = userMapper.selectOne(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getOpenId, openId)
+                        .eq(User::getIsDeleted, 0)
+        );
+        if (existing != null) {
+            // 更新昵称和头像（可能变化）
+            boolean updated = false;
+            if (nickname != null && !nickname.equals(existing.getQqNickname())) {
+                existing.setQqNickname(nickname);
+                updated = true;
+            }
+            if (avatar != null && !avatar.equals(existing.getQqAvatar())) {
+                existing.setQqAvatar(avatar);
+                updated = true;
+            }
+            if (updated) {
+                existing.setUpdateTime(LocalDateTime.now());
+                userMapper.updateById(existing);
+                log.info("[QQ登录] 用户信息已更新: userId={}, openId={}", existing.getId(), openId);
+            }
+            return existing;
+        }
+
+        // 2. 不存在则创建新用户
+        String username = "qq_" + openId.substring(0, Math.min(8, openId.length()));
+        User newUser = new User();
+        newUser.setUsername(username);
+        newUser.setPassword(null);  // QQ 用户无密码
+        newUser.setNickname(nickname != null ? nickname : username);
+        newUser.setOpenId(openId);
+        newUser.setQqNickname(nickname);
+        newUser.setQqAvatar(avatar);
+        newUser.setStatus(0);
+        newUser.setCreateTime(LocalDateTime.now());
+        newUser.setUpdateTime(LocalDateTime.now());
+        userMapper.insert(newUser);
+        log.info("[QQ登录] 新用户注册: userId={}, username={}, openId={}", newUser.getId(), username, openId);
+        return newUser;
+    }
+
     // ==================== B 端（管理后台） ====================
 
     @Override
@@ -149,14 +200,16 @@ public class UserServiceImpl implements UserService {
 
         Page<User> pageResult = userMapper.selectPage(pageParam, wrapper);
 
-        // 清空 password 字段（避免泄露）
-        pageResult.getRecords().forEach(u -> u.setPassword(null));
+        // 转换为 AdminUserVO，避免返回 password 字段
+        List<AdminUserVO> voList = pageResult.getRecords().stream()
+                .map(this::toAdminUserVO)
+                .collect(Collectors.toList());
 
         AdminUserPageResp resp = new AdminUserPageResp();
         resp.setTotal(pageResult.getTotal());
         resp.setPage(page);
         resp.setSize(size);
-        resp.setRecords(pageResult.getRecords());
+        resp.setRecords(voList);
         return resp;
     }
 
@@ -202,7 +255,26 @@ public class UserServiceImpl implements UserService {
                 adminId, adminName, userId, exist.getUsername(), previous, target);
     }
 
+    /**
+     * 将 User 实体转换为 AdminUserVO（排除 password 字段）
+     */
+    private AdminUserVO toAdminUserVO(User user) {
+        AdminUserVO vo = new AdminUserVO();
+        vo.setId(user.getId());
+        vo.setUsername(user.getUsername());
+        vo.setNickname(user.getNickname());
+        vo.setPhone(user.getPhone());
+        vo.setEmail(user.getEmail());
+        vo.setAvatar(user.getAvatar());
+        vo.setStatus(user.getStatus());
+        vo.setLastLoginTime(user.getLastLoginTime());
+        vo.setCreateTime(user.getCreateTime());
+        vo.setUpdateTime(user.getUpdateTime());
+        return vo;
+    }
+
     private String generateEventId() {
         return UUID.randomUUID().toString().replace("-", "");
     }
 }
+

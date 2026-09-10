@@ -22,6 +22,7 @@
         <module>del-product</module>
         <module>del-gateway</module>
         <module>del-file</module>
+        <module>del-cs</module>
     </modules>
 
     <properties>
@@ -200,4 +201,5 @@
     
     </build>
     </project>
+
 

@@ -1,0 +1,19 @@
+# 数据库配置
+database:
+  host: localhost
+  port: 3306
+  user: root
+  password: your_password_here
+  database: del_product_db
+
+# MinIO 配置
+minio:
+  endpoint: 127.0.0.1:9000
+  access_key: admin
+  secret_key: your_secret_key_here
+  bucket: product-picture
+  secure: false
+
+# TheMealDB 配置（无需认证）
+mealdb:
+  base_url: https://www.themealdb.com/api/json/v1/1

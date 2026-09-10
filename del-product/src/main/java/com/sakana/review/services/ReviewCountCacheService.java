@@ -42,6 +42,12 @@ public interface ReviewCountCacheService {
     void invalidateLocal(Long productId);
 
     /**
+     * 跨实例广播缓存失效（通过 Redis Pub/Sub）
+     * @param productId 商品 ID
+     */
+    void publishInvalidate(Long productId);
+
+    /**
      * 获取用户投票状态（从缓存，未命中查 DB）
      *
      * @param userId    用户 ID

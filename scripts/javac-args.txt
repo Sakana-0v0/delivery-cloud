@@ -1,0 +1,8 @@
+﻿-d
+"E:\Idea_project\delivery-cloud\del-product\target\classes"
+-encoding
+UTF-8
+-source
+17
+-target
+17

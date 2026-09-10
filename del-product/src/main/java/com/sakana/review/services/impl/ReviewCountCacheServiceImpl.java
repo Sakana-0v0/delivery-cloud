@@ -25,6 +25,8 @@ public class ReviewCountCacheServiceImpl implements ReviewCountCacheService {
     private static final String REDIS_KEY_PREFIX = "review:count:";
     private static final String FIELD_LIKE = "like";
     private static final String FIELD_BAD = "bad";
+    /** 跨实例缓存失效广播频道 */
+    private static final String INVALIDATE_CHANNEL = "cache:invalidate:review-count";
 
     private final StringRedisTemplate stringRedisTemplate;
     private final Cache<Long, ReviewCountVO> reviewCountCache;    // L1 Caffeine
@@ -183,6 +185,19 @@ public class ReviewCountCacheServiceImpl implements ReviewCountCacheService {
         if (productId != null) {
             reviewCountCache.invalidate(productId);
             log.debug("[计数缓存] L1 失效: productId={}", productId);
+        }
+    }
+
+    @Override
+    public void publishInvalidate(Long productId) {
+        if (productId == null) {
+            return;
+        }
+        try {
+            stringRedisTemplate.convertAndSend(INVALIDATE_CHANNEL, String.valueOf(productId));
+            log.debug("[计数缓存] 广播失效: productId={}", productId);
+        } catch (Exception e) {
+            log.warn("[计数缓存] 广播失效失败: productId={}, error={}", productId, e.getMessage());
         }
     }
 

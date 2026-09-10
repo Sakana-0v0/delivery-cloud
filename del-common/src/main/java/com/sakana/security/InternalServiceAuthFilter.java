@@ -35,7 +35,7 @@ public class InternalServiceAuthFilter extends OncePerRequestFilter {
 
         String requestPath = request.getRequestURI();
 
-        if (!requestPath.startsWith("/internal/")) {
+        if (!requestPath.startsWith("/internal/") && !requestPath.startsWith("/api/v1/internal/")) {
             filterChain.doFilter(request, response);
             return;
         }

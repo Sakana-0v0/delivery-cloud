@@ -38,6 +38,7 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/doc.html").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         // C 端支付：USER 角色
+                        .requestMatchers("/api/v1/payments/return", "/api/v1/payments/notify").permitAll()
                         .requestMatchers("/api/v1/payments/**").hasRole("USER")
                         .anyRequest().authenticated()
                 )

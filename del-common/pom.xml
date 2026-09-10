@@ -77,6 +77,12 @@
             <optional>true</optional>
         </dependency>
 
+
+        <!-- Spring Cloud LoadBalancer（@LoadBalanced RestTemplate 需要） -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-loadbalancer</artifactId>
+        </dependency>
         <!-- Hutool 工具库 -->
         <dependency>
             <groupId>cn.hutool</groupId>

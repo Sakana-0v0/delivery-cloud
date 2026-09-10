@@ -79,7 +79,7 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
         }
 
         // 3. 内部服务调用验证（/internal/**）
-        if (path.startsWith("/internal/")) {
+        if (path.startsWith("/internal/") || path.startsWith("/api/v1/internal/")) {
             return validateInternalServiceCall(exchange, chain, request);
         }
 
@@ -184,3 +184,4 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
         return response.writeWith(Mono.just(buffer));
     }
 }
+

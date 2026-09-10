@@ -23,6 +23,16 @@ public interface UserService {
      */
     User getByUsername(String username);
 
+    /**
+     * 根据 QQ openId 查询或创建用户
+     *
+     * @param openId   QQ open_id（唯一标识）
+     * @param nickname QQ 昵称（可null）
+     * @param avatar   QQ 头像 URL（可null）
+     * @return 用户实体
+     */
+    User getOrCreateQqUser(String openId, String nickname, String avatar);
+
     // ==================== B 端（管理后台） ====================
 
     /**

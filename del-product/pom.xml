@@ -106,6 +106,27 @@
             <artifactId>caffeine</artifactId>
         </dependency>
 
+        <!-- ====== Search 模块依赖（#SEARCH-001）====== -->
+        <!-- Spring Data Elasticsearch -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-elasticsearch</artifactId>
+        </dependency>
+
+        <!-- DashScope SDK（阿里云通义千问 API） -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>dashscope-sdk-java</artifactId>
+            <version>2.20.0</version>
+        </dependency>
+
+        <!-- Ansj Seg（Java 中文分词，Maven 中央仓库有） -->
+        <dependency>
+            <groupId>org.ansj</groupId>
+            <artifactId>ansj_seg</artifactId>
+            <version>5.1.6</version>
+        </dependency>
+
         <!-- Spring Boot Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -46,7 +46,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/products/*/reviews").authenticated()
                         .requestMatchers("/api/v1/reviews/*/vote").authenticated()
                         // 内部接口（需内部服务认证）
-                        .requestMatchers("/internal/**").hasRole("INTERNAL_SERVICE")
+                        .requestMatchers("/internal/**", "/api/v1/internal/**").hasRole("INTERNAL_SERVICE")
                         // Swagger / Actuator
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/doc.html").permitAll()
                         .requestMatchers("/actuator/**").permitAll()

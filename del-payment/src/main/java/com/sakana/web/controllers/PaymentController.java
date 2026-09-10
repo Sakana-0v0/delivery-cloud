@@ -42,7 +42,8 @@ public class PaymentController {
     @Operation(summary = "查询支付状态")
     public R<PaymentStatusVO> queryStatus(@PathVariable String orderNo) {
         Long userId = SecurityUtil.getCurrentUserId();
-        return R.ok(paymentService.queryStatus(userId, orderNo));
+        PaymentStatusVO status = paymentService.queryStatus(userId, orderNo);
+        return R.ok(status);
     }
 
     @PostMapping("/notify")
@@ -61,7 +62,22 @@ public class PaymentController {
         // 同步跳转需带订单 ID 才能落到前端 /orders/:id 路由详情页
         log.info("[支付同步跳转] params={}", params);
         String orderNo = params.get("out_trade_no");
+        String tradeNo = params.get("trade_no");
+        String totalAmount = params.get("total_amount");
         Long orderId = paymentService.findOrderIdByOrderNo(orderNo);
-        response.sendRedirect("http://localhost:5173/orders/" + (orderId == null ? orderNo : orderId));
+
+        // 透传 Alipay 同步跳转参数到前端（trade_no 用于用户核对/对账）
+        StringBuilder sb = new StringBuilder("http://localhost:5173/orders/")
+                .append(orderId == null ? orderNo : orderId);
+        if (tradeNo != null || totalAmount != null) {
+            sb.append("?");
+            if (tradeNo != null) sb.append("trade_no=").append(tradeNo);
+            if (totalAmount != null) {
+                if (tradeNo != null) sb.append("&");
+                sb.append("total_amount=").append(totalAmount);
+            }
+        }
+        log.info("[支付同步跳转] 跳转前端: {}", sb);
+        response.sendRedirect(sb.toString());
     }
 }

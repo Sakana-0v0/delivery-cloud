@@ -50,11 +50,10 @@
             <artifactId>del-common</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>com.sakana</groupId>
-            <artifactId>del-product</artifactId>
-            <version>${project.version}</version>
-        </dependency>
+        <!-- del-product 依赖已移除（#ARCH-FEIGN-001）
+             VoteController / ReviewServiceImpl 不应在 del-order 注册
+             通过 Feign 接口（已在 del-common）调用 del-product -->
+
         <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-spring-boot3-starter</artifactId>

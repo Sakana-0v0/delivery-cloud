@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 虚拟环境
+venv/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# 配置（包含敏感信息）
+config.yaml
+
+# 输出
+output/*.json
+output/*.sql
+!output/.gitkeep
+
+# 日志
+*.log
+errors.log

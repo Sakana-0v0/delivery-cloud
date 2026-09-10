@@ -6,52 +6,71 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
- * 点赞/踩事件消息
+ * 评价投票事件消息（#PROD-VOTE-010）
  *
- * <p>用于 MQ 异步处理点赞/踩操作的计数更新
+ * <p>vote_persist 事件由 VotePersistConsumer 处理，异步落 t_review 表。
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class VoteEvent implements Serializable {
-    
+
     private static final long serialVersionUID = 1L;
-    
-    /** 操作类型：like=点赞, bad=踩, cancel=取消 */
+
+    /** 事件唯一ID（用于 Consumer 幂等去重，#PROD-VOTE-007） */
+    private String eventId;
+
+    /** 事件类型：vote_persist */
     private String action;
-    
+
+    /**
+     * 目标状态（vote_persist 事件专用）
+     * like / bad / null（null 表示取消）
+     */
+    private String targetType;
+
+    /**
+     * 动作前状态（vote_persist 事件专用）
+     * like / bad / null（null 表示之前无记录）
+     */
+    private String oldType;
+
     /** 用户ID */
     private Long userId;
-    
+
     /** 订单ID */
     private Long orderId;
-    
+
     /** 商品ID */
     private Long productId;
-    
+
     /** 事件时间 */
     private LocalDateTime eventTime;
-    
+
     /**
-     * 构造点赞事件
+     * 生成事件唯一ID
      */
-    public static VoteEvent like(Long userId, Long orderId, Long productId) {
-        return new VoteEvent("like", userId, orderId, productId, LocalDateTime.now());
+    public static String generateEventId() {
+        return UUID.randomUUID().toString().replace("-", "");
     }
-    
+
     /**
-     * 构造踩事件
+     * 构造 vote_persist 事件
      */
-    public static VoteEvent bad(Long userId, Long orderId, Long productId) {
-        return new VoteEvent("bad", userId, orderId, productId, LocalDateTime.now());
-    }
-    
-    /**
-     * 构造取消事件
-     */
-    public static VoteEvent cancel(Long userId, Long orderId, Long productId) {
-        return new VoteEvent("cancel", userId, orderId, productId, LocalDateTime.now());
+    public static VoteEvent votePersist(Long userId, Long orderId, Long productId,
+                                         String targetType, String oldType) {
+        return new VoteEvent(
+                generateEventId(),
+                "vote_persist",
+                targetType,
+                oldType,
+                userId,
+                orderId,
+                productId,
+                LocalDateTime.now()
+        );
     }
 }

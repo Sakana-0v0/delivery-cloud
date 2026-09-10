@@ -1,8 +1,11 @@
 package com.sakana.dao.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+
+import java.time.LocalDateTime;
 
 /**
  * 用户实体
@@ -18,7 +21,7 @@ public class User extends BaseEntity {
     private String username;
 
     /**
-     * 密码（BCrypt 加密）
+     * 密码（BCrypt 加密，QQ 用户可空）
      */
     private String password;
 
@@ -50,5 +53,25 @@ public class User extends BaseEntity {
     /**
      * 最近登录时间
      */
-    private java.time.LocalDateTime lastLoginTime;
+    private LocalDateTime lastLoginTime;
+
+    // ========== QQ 第三方登录字段 ==========
+
+    /**
+     * QQ open_id（唯一，QQ 用户标识）
+     */
+    @TableField("open_id")
+    private String openId;
+
+    /**
+     * QQ 昵称缓存
+     */
+    @TableField("qq_nickname")
+    private String qqNickname;
+
+    /**
+     * QQ 头像 URL（100x100）
+     */
+    @TableField("qq_avatar")
+    private String qqAvatar;
 }

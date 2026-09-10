@@ -8,7 +8,8 @@ import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.support.converter.SimpleMessageConverter;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -55,21 +56,16 @@ public class RabbitMQConfig {
     // ==================== MessageConverter ====================
 
     @Bean
-    public SimpleMessageConverter userMessageConverter() {
-        SimpleMessageConverter converter = new SimpleMessageConverter();
-        // 允许反序列化业务事件和 JDK 集合类（HashMap 等）
-        converter.addAllowedListPatterns(
-            "com.sakana.events.*",
-            "java.util.*",
-            "java.lang.*",
-            "java.time.*"
-        );
+    public MessageConverter userMessageConverter() {
+        // PAY-004: 与 del-order 的 Jackson2JsonMessageConverter 对称
+        Jackson2JsonMessageConverter converter = new Jackson2JsonMessageConverter();
+        converter.setCreateMessageIds(true);
         return converter;
     }
 
     @Bean
     public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(
-            ConnectionFactory cf, SimpleMessageConverter mc) {
+            ConnectionFactory cf, MessageConverter mc) {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
         factory.setConnectionFactory(cf);
         factory.setMessageConverter(mc);

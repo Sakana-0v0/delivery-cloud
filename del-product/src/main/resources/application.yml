@@ -25,10 +25,39 @@ spring:
       - optional:nacos:common-actuator.yml
       - optional:nacos:common-swagger.yml
       - optional:nacos:del-product.yml
+  # ====== 本地备用 datasource（Nacos namespace 加载失败时降级）======
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/del_product_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: ${DB_PASSWORD:sakana013}
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchClientAutoConfiguration
+      - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration
+      - org.springframework.boot.actuate.autoconfigure.data.elasticsearch.ElasticsearchReactiveHealthContributorAutoConfiguration
+  # ====== Search 模块配置（#SEARCH-001）======
+  # 临时禁用 ES（#BUG-004：绕过 JDK 17 Windows NIO Pipe BUG）
+  # elasticsearch:
+  #   uris: http://localhost:9200
+
+# DashScope 通义千问 API 配置（#SEARCH-001）
+dashscope:
+  api-key: ${DASHSCOPE_API_KEY:sk-ws-H.EPMIMXX.qOOD.MEYCIQCHu-Y0BeLTMaxdTl1YcH1Fp-oHAkiD-o-i-sT6RsIXfQIhAJ1eNcmyG2FO4zvCKNcIl9NHvxn8gICWthuTKRWSXAB1}
+  embedding-model: text-embedding-v2
+  embedding-dim: 1536
+
+# 搜索模块配置（#SEARCH-001）
+# #BUG-007 修复：search.expansion 配置已移除
+# （ExpansionRules 改为可选注入，ES 模块暂未启用，待启用 ES 后再配置）
+search:
+  index:
+    name: dish
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info
-

@@ -18,5 +18,5 @@ public class AdminUserPageResp implements Serializable {
     private Long total;
     private Integer page;
     private Integer size;
-    private List<?> records;
+    private List<AdminUserVO> records;
 }

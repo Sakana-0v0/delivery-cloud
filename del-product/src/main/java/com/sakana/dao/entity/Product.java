@@ -63,4 +63,19 @@ public class Product extends BaseEntity {
      * 状态（0=上架，1=下架）
      */
     private Integer status;
+
+    /**
+     * 卡路里（千卡/份）
+     */
+    private Integer calories;
+
+    /**
+     * 蛋白质（克/份）
+     */
+    private Float protein;
+
+    /**
+     * 脂肪（克/份）
+     */
+    private Float fat;
 }

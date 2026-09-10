@@ -11,11 +11,11 @@
   </component>
   <component name="DBNavigator.Project.DatabaseAssistantManager">
     <assistants>
-      <assistant-state connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" assistant-type="PUBLIC" default-profile-name="" selected-chat-id="" availability="AVAILABLE" acknowledgement="NONE" selected="true">
+      <assistant-state connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" assistant-type="SELECT_AI" default-profile-name="" selected-chat-id="" availability="UNAVAILABLE" acknowledgement="NONE">
         <tools />
         <mcp-servers />
       </assistant-state>
-      <assistant-state connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" assistant-type="SELECT_AI" default-profile-name="" selected-chat-id="" availability="UNAVAILABLE" acknowledgement="NONE">
+      <assistant-state connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" assistant-type="PUBLIC" default-profile-name="" selected-chat-id="" availability="AVAILABLE" acknowledgement="NONE" selected="true">
         <tools />
         <mcp-servers />
       </assistant-state>
@@ -54,6 +54,7 @@
     <mapping file-url="file://$PROJECT_DIR$/scripts/outbox_tables.sql" connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" session-id="MAIN" current-schema="del_user_db" />
     <mapping file-url="file://$APPLICATION_CONFIG_DIR$/consoles/db/69adff5d-8c34-468a-8373-e280cdb3759d/console_5.sql" connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" session-id="MAIN" current-schema="del_user_db" />
     <mapping file-url="file://$APPLICATION_CONFIG_DIR$/consoles/db/69adff5d-8c34-468a-8373-e280cdb3759d/console_6.sql" connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" session-id="MAIN" current-schema="del_user_db" />
+    <mapping file-url="file://$APPLICATION_CONFIG_DIR$/consoles/db/69adff5d-8c34-468a-8373-e280cdb3759d/console_7.sql" connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" session-id="MAIN" current-schema="del_user_db" />
     <mapping file-url="file://$PROJECT_DIR$/docs/cleanup_and_seed.sql" connection-id="83484224-d8ec-4986-b1a4-15529bc4bdd9" session-id="MAIN" current-schema="del_user_db" />
   </component>
   <component name="DBNavigator.Project.ObjectQuickFilterManager">

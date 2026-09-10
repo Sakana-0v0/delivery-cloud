@@ -23,6 +23,11 @@ public interface OrderService extends IService<Order> {
 
     OrderVO getOrderDetail(Long userId, Long orderId);
 
+    /**
+     * ★ BUG-018：通过业务订单号（orderNo）查询订单
+     */
+    OrderVO getByOrderNo(Long userId, String orderNo);
+
     void cancelOrder(Long userId, Long orderId);
 
     void confirmOrder(Long userId, Long orderId);

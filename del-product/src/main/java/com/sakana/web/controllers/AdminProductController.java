@@ -37,12 +37,12 @@ public class AdminProductController {
     @Operation(summary = "商品分页（含上下架、库存、销量）")
     public R<ProductPageResp> getPage(
             @Parameter(description = "分类ID") @RequestParam(required = false) Long categoryId,
-            @Parameter(description = "关键词") @RequestParam(required = false) String keyword,
+            @Parameter(description = "商品名称关键词") @RequestParam(required = false) String name,
             @Parameter(description = "状态：0上架 1下架（不传=全部）")
             @RequestParam(required = false) Integer status,
             @Parameter(description = "页码") @RequestParam(defaultValue = "1") int page,
             @Parameter(description = "每页条数") @RequestParam(defaultValue = "10") int size) {
-        return R.ok(productService.adminGetPage(categoryId, keyword, status, page, size));
+        return R.ok(productService.adminGetPage(categoryId, name, status, page, size));
     }
 
     @GetMapping("/{id}")
@@ -86,3 +86,4 @@ public class AdminProductController {
         return R.ok();
     }
 }
+

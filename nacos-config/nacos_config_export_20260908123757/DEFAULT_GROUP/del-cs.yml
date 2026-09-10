@@ -1,0 +1,16 @@
+# del-cs 智能客服服务配置（#AI-CS-001-MVP）
+# 存在 Nacos：namespace=sakana / group=DEFAULT_GROUP / dataId=del-cs.yml
+# 修改后无需重启，Nacos 配置自动刷新
+
+spring:
+  application:
+    name: del-cs
+  
+dashscope:
+  api-key: sk-ws-H.PDHEILR.hI9Y.MEUCIQChSdFH_lfFi6nqg_1n9SRXT4fh24iTdoUPJpsgloRfdgIgEXIu76IjSG68RZO7c_BT73z8OWeBRCMr2ljv06Slxz0
+  model-name: qwen-max   # 可选，默认 qwen-plus
+server:
+  port: 10011
+
+# Nacos Discovery 已由 application.yml 指定
+# 此文件可放服务级定制配置（如超时、重试、降级开关等）

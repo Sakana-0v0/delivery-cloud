@@ -1,0 +1,29 @@
+﻿# E:\Idea_project\delivery-cloud\docker-compose.yml
+# 简化版：使用 ES 8.11 内置 smartcn 中文分词器（无需装 IK 插件）
+
+version: '3.8'
+
+services:
+  # ============ Elasticsearch (搜索服务) ============
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: es-search
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.name=delivery-search
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  es_data:
+    driver: local

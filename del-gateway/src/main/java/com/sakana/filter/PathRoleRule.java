@@ -6,6 +6,7 @@ package com.sakana.filter;
  * <p>采用"角色前缀 + 业务前缀"模式：
  * <ul>
  *   <li>/api/v1/admin/**    → 需 ADMIN/SUPER_ADMIN</li>
+ *   <li>/api/v1/payments/return, /notify → 支付宝回调公开
  *   <li>/api/v1/user/**     → 需 USER</li>
  *   <li>/api/v1/cart/**     → 需 USER（购物车是 C 端私有接口）</li>
  *   <li>/internal/**        → 内部服务调用白名单（需 X-Internal-Service-Token）</li>
@@ -48,6 +49,11 @@ public final class PathRoleRule {
             return true;
         }
 
+        // QQ 第三方登录回调（无需 JWT，心月互联授权后回调）
+        if (path.startsWith("/api/v1/auth/qq/")) {
+            return true;
+        }
+
         // ==================== B 端公开接口 ====================
         // 管理员登录
         if (path.equals("/api/v1/admin/auth/login")) {
@@ -57,6 +63,19 @@ public final class PathRoleRule {
         // ==================== 商品浏览公开 ====================
         // 商品/分类公开（C 端游客可访问）
         if (path.startsWith("/api/v1/products") || path.startsWith("/api/v1/categories")) {
+            return true;
+        }
+
+        // ==================== 支付宝回调公开（PAY-003）====================
+        // /return 是浏览器302跳转（Alipay 沙箱），不带 JWT，必须公开
+        // /notify 是 Alipay 服务器→服务器异步回调，有 rsaCheckV1 验签保护
+        if (path.equals("/api/v1/payments/return") || path.equals("/api/v1/payments/notify")) {
+            return true;
+        }
+
+        // ==================== 智能客服公开（#AI-CS-001-MVP）====================
+        // /api/v1/cs/** 无需认证（JWT 由 del-cs 自行决定）
+        if (path.startsWith("/api/v1/cs/")) {
             return true;
         }
 

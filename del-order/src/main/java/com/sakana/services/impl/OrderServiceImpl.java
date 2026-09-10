@@ -216,6 +216,20 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
                 new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, orderId));
         return toVO(order, orderItems);
     }
+    @Override
+    public OrderVO getByOrderNo(Long userId, String orderNo) {
+        Order order = getOne(
+            new LambdaQueryWrapper<Order>()
+                .eq(Order::getOrderNo, orderNo)
+                .eq(Order::getUserId, userId)
+        );
+        if (order == null || order.getIsDeleted() == 1) {
+            throw new BizException(OrderErrorCode.ORDER_NOT_FOUND);
+        }
+        List<OrderItem> orderItems = orderItemMapper.selectList(
+            new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, order.getId()));
+        return toVO(order, orderItems);
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -265,7 +279,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         LambdaQueryWrapper<Order> wrapper = new LambdaQueryWrapper<>();
         if (query.getUserId() != null) wrapper.eq(Order::getUserId, query.getUserId());
         if (query.getStatus() != null) wrapper.eq(Order::getStatus, query.getStatus());
-        if (query.getOrderNo() != null) wrapper.eq(Order::getOrderNo, query.getOrderNo());
+        if (query.getOrderNo() != null && !query.getOrderNo().isBlank()) wrapper.likeRight(Order::getOrderNo, query.getOrderNo());
         wrapper.eq(Order::getIsDeleted, 0);
         wrapper.orderByDesc(Order::getCreateTime);
 
