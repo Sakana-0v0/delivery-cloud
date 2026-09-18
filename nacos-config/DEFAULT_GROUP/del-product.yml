@@ -1,0 +1,61 @@
+spring:
+  application:
+    name: del-product
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/del_product_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: ${DB_PASSWORD:sakana013}
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    database: 0
+  rabbitmq:
+    host: 127.0.0.1
+    port: 5672
+    username: admin
+    password: 123456
+  cloud:
+    sentinel:
+      # ★ #SEARCH-SENTINEL：Sentinel 控制台（生产可指向独立 Sentinel Dashboard）
+      transport:
+        dashboard: 127.0.0.1:8080
+        port: 8719
+      # ★ Nacos 动态规则：启动时从 Nacos 拉取，覆盖本地默认
+      datasource:
+        flow:
+          nacos:
+            server-addr: 127.0.0.1:8848
+            namespace: sakana
+            group-id: DEFAULT_GROUP
+            data-id: sentinel-flow-rules-delproduct
+            rule-type: flow
+        degrade:
+          nacos:
+            server-addr: 127.0.0.1:8848
+            namespace: sakana
+            group-id: DEFAULT_GROUP
+            data-id: sentinel-degrade-rules-delproduct
+            rule-type: degrade
+
+# ====== MinIO 配置（#BUG-IMG-001：封面 URL 重签）======
+minio:
+  endpoint:  ${MINIO_ENDPOINT:http://127.0.0.1:9000}
+  access-key: ${MINIO_ACCESS_KEY:admin}
+  secret-key: ${MINIO_SECRET_KEY:sakana013}
+  bucket:     ${MINIO_BUCKET:product-picture}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: isDeleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

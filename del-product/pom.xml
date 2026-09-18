@@ -86,6 +86,12 @@
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
         </dependency>
 
+        <!-- Spring Cloud Alibaba Sentinel（#SEARCH-SENTINEL：菜品搜索熔断/限流） -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
+        </dependency>
+
         <!-- 负载均衡 -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
@@ -104,6 +110,13 @@
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
+        </dependency>
+
+        <!-- MinIO 客户端（用于商品序列化时重签封面 URL，避免 7 天过期失效） -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>8.5.10</version>
         </dependency>
 
         <!-- ====== Search 模块依赖（#SEARCH-001）====== -->
