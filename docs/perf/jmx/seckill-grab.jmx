@@ -80,8 +80,8 @@
         <hashTree>
           <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="code=200 OR 抢失败业务码 (4xx)" enabled="true">
             <collectionProp name="Asserion.test_strings">
-              <stringProp>200</stringProp>
-              <stringProp>4..</stringProp>
+              <stringProp name="200">200</stringProp>
+              <stringProp name="4xx">4..</stringProp>
             </collectionProp>
             <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
             <intProp name="Assertion.test_type">2</intProp>

@@ -3,4 +3,10 @@ results/*.jtl
 results/*.csv
 results/*.png
 results/*.log
-tokens.csv
+jmx/results/
+jmx/*.log
+jmx/tokens.csv
+jmx/admin-tokens.csv
+jmx/*-debug.jmx
+jmx/*-noassert.jmx
+jmx/hs_err*.log
