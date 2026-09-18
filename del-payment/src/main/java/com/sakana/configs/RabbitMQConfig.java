@@ -8,10 +8,11 @@ import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
-import org.springframework.amqp.support.converter.SimpleMessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 /**
  * del-payment 侧的 RabbitMQ 拓扑。
@@ -29,12 +30,14 @@ public class RabbitMQConfig {
     /** 死信交换机 */
     public static final String PAID_DLX_EXCHANGE = "payment.order.paid.dlx.exchange";
 
+    /**
+     * ★ FREE-ORDER-002：统一用 Jackson2JsonMessageConverter
+     * 与 del-order 的 Jackson2JsonMessageConverter 保持一致，跨服务通信不再有反序列化失败。
+     */
     @Bean
+    @Primary
     public MessageConverter paymentMessageConverter() {
-        SimpleMessageConverter converter = new SimpleMessageConverter();
-        // 允许反序列化 del-common.events 包下的所有事件
-        converter.addAllowedListPatterns("com.sakana.events.*");
-        return converter;
+        return new Jackson2JsonMessageConverter();
     }
 
     @Bean

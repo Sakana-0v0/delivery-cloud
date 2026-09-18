@@ -18,24 +18,25 @@ import java.util.Map;
 
 /**
  * 支付接口（对外，前端调用）。
- * <p>
- * 路径前缀保持 {@code /api/v1/payments}，由网关路由到本服务。
  */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/payments")
 @RequiredArgsConstructor
-@Tag(name = "支付", description = "支付宝沙箱支付、回调、状态查询")
+@Tag(name = "支付", description = "支付宝沙箱支付、免单支付、回调、状态查询")
 public class PaymentController {
 
     private final PaymentService paymentService;
 
     @PostMapping
-    @Operation(summary = "创建支付（生成支付链接/表单）")
+    @Operation(summary = "创建支付（支持免单码）")
     public R<PaymentVO> createPayment(@RequestBody Map<String, Object> req) {
         Long userId = SecurityUtil.getCurrentUserId();
         Long orderId = Long.valueOf(req.get("orderId").toString());
-        return R.ok(paymentService.createPayment(userId, orderId));
+        String freeOrderCode = req.containsKey("freeOrderCode")
+                ? (req.get("freeOrderCode") != null ? req.get("freeOrderCode").toString() : null)
+                : null;
+        return R.ok(paymentService.createPayment(userId, orderId, freeOrderCode));
     }
 
     @GetMapping("/{orderNo}")
@@ -51,7 +52,7 @@ public class PaymentController {
     public String handleNotify(HttpServletRequest request) {
         Map<String, String> params = new java.util.HashMap<>();
         request.getParameterMap().forEach((k, v) -> params.put(k, v[0]));
-        log.info("[支付回调] [Controller] 收到回调, params={}", params);
+        log.info("[支付回调] 收到回调, params={}", params);
         return paymentService.handleNotify(params);
     }
 
@@ -59,14 +60,12 @@ public class PaymentController {
     @Operation(summary = "支付宝同步跳转")
     public void handleReturn(@RequestParam Map<String, String> params,
                              HttpServletResponse response) throws IOException {
-        // 同步跳转需带订单 ID 才能落到前端 /orders/:id 路由详情页
         log.info("[支付同步跳转] params={}", params);
         String orderNo = params.get("out_trade_no");
         String tradeNo = params.get("trade_no");
         String totalAmount = params.get("total_amount");
         Long orderId = paymentService.findOrderIdByOrderNo(orderNo);
 
-        // 透传 Alipay 同步跳转参数到前端（trade_no 用于用户核对/对账）
         StringBuilder sb = new StringBuilder("http://localhost:5173/orders/")
                 .append(orderId == null ? orderNo : orderId);
         if (tradeNo != null || totalAmount != null) {

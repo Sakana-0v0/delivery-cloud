@@ -40,6 +40,10 @@ public class SecurityConfig {
                         // C 端支付：USER 角色
                         .requestMatchers("/api/v1/payments/return", "/api/v1/payments/notify").permitAll()
                         .requestMatchers("/api/v1/payments/**").hasRole("USER")
+                        // ★ FREE-ORDER-003：抢免单 C 端专属，需 USER 角色
+                        .requestMatchers("/api/v1/free-orders/**").hasRole("USER")
+                        // 抢免单管理员端，需 ADMIN/SUPER_ADMIN
+                        .requestMatchers("/api/v1/admin/free-orders/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(dualPoolJwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
