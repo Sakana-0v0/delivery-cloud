@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: del-admin
+  datasource:
+    dynamic:
+      primary: master
+      strict: false   # 允许未找到主库时不抛异常（可选）
+      datasource:
+        # 主库配置（请根据实际环境修改）
+        master:
+          url: jdbc:mysql://127.0.0.1:3306/del_admin_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+          username: root
+          password: ${DB_PASSWORD:sakana013}
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          # 连接池配置（可选）
+          hikari:
+            minimum-idle: 5
+            maximum-pool-size: 20
+            idle-timeout: 600000
+            max-lifetime: 1800000
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    database: 0
+
+mybatis-plus:
+  type-aliases-package: com.sakana.admin.dao.entity  
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: isDeleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.sakana: DEBUG

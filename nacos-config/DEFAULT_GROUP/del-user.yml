@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: del-user
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/del_user_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: ${DB_PASSWORD:sakana013}
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    database: 0
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: isDeleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+# ======== QQ 第三方登录配置（心月互联）========
+qq:
+  enabled: true
+  token: 332003de14f0f84a587ee4b93a9087ee   # 心月互联后台申请，30天有效
+  base-url: https://qq.wch666.com
+  # 回调 URL：心月互联授权后回调此地址
+  callback-url: http://localhost:10010/api/v1/auth/qq/callback
+  # 前端成功页地址（后端 302 重定向目标）
+  frontend-base-url: http://localhost:5173

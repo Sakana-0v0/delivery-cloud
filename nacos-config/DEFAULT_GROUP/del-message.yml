@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: del-message
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/del_message_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: ${DB_PASSWORD:sakana013}
+  mail:
+    host: smtp.163.com
+    port: 465
+    username: ${MAIL_USERNAME:sakanaovo_13@163.com}
+    password: ${MAIL_PASSWORD:MVuGTjfM9e68JpLy}
+    properties:
+      mail:
+        smtp:
+          ssl:
+            enable: true
+    default-encoding: UTF-8
+
+app:
+  rabbit:
+    order-paid-queue: del-message.order.paid
+    user-event-queue: del-message.user.event
+    order-event-queue: del-message.order.event
+  email:
+    enabled: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: isDeleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
