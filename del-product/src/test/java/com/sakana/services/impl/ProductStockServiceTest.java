@@ -14,6 +14,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import com.sakana.review.services.ReviewCountCacheService;
+import io.minio.MinioClient;
 import org.springframework.data.redis.core.RedisTemplate;
 
 import java.lang.reflect.Field;
@@ -35,6 +37,8 @@ class ProductStockServiceTest {
     @Mock private CategoryMapper categoryMapper;
     @Mock private ProductMapper productMapper;
     @Mock private SnowflakeIdGenerator snowflakeIdGenerator;
+    @Mock private MinioClient minioClient;
+    @Mock private ReviewCountCacheService reviewCountCacheService;
 
     private ProductServiceImpl service;
 
@@ -50,7 +54,7 @@ class ProductStockServiceTest {
     }
 
     private ProductServiceImpl newService() {
-        ProductServiceImpl impl = new ProductServiceImpl(redisTemplate, categoryMapper, productMapper, snowflakeIdGenerator);
+        ProductServiceImpl impl = new ProductServiceImpl(redisTemplate, categoryMapper, productMapper, snowflakeIdGenerator, minioClient, reviewCountCacheService);
         try {
             Field baseMapperField = Class.forName("com.baomidou.mybatisplus.extension.service.impl.ServiceImpl")
                     .getDeclaredField("baseMapper");

@@ -81,7 +81,14 @@
             <artifactId>dashscope-sdk-java</artifactId>
             <version>${dashscope.version}</version>
         </dependency>
-    </dependencies>
+    
+        <!-- Spring Boot Test (JUnit5 + Mockito) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+</dependencies>
 
     <build>
         <plugins>
