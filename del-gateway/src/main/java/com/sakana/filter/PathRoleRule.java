@@ -6,9 +6,10 @@ package com.sakana.filter;
  * <p>采用"角色前缀 + 业务前缀"模式：
  * <ul>
  *   <li>/api/v1/admin/**    → 需 ADMIN/SUPER_ADMIN</li>
- *   <li>/api/v1/payments/return, /notify → 支付宝回调公开
+ *   <li>/api/v1/payments/return, /notify → 支付宝回调公开</li>
  *   <li>/api/v1/user/**     → 需 USER</li>
  *   <li>/api/v1/cart/**     → 需 USER（购物车是 C 端私有接口）</li>
+ *   <li>/api/v1/free-orders/** → 需 USER（抢免单是 C 端用户操作）</li>
  *   <li>/internal/**        → 内部服务调用白名单（需 X-Internal-Service-Token）</li>
  *   <li>其他已认证路径      → 任意合法角色放行</li>
  * </ul>
@@ -126,6 +127,15 @@ public final class PathRoleRule {
         // ==================== 购物车路径 ====================
         // /api/v1/cart/** 需普通用户（购物车为 C 端私有）
         if (path.startsWith("/api/v1/cart/") || path.equals("/api/v1/cart")) {
+            if ("USER".equals(role)) {
+                return null;
+            }
+            return "需要普通用户权限";
+        }
+
+        // ==================== 抢免单 C 端路径（FREE-ORDER-003）====================
+        // /api/v1/free-orders/** 需普通用户（抢单是 C 端用户操作）
+        if (path.startsWith("/api/v1/free-orders/")) {
             if ("USER".equals(role)) {
                 return null;
             }
