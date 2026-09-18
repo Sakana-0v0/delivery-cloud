@@ -8,6 +8,7 @@ import com.sakana.dao.mapper.FreeOrderCouponMapper;
 import com.sakana.enums.FreeOrderActivityStatus;
 import com.sakana.enums.FreeOrderCouponStatus;
 import com.sakana.exceptions.BizException;
+import com.sakana.metrics.CouponMetrics;
 import com.sakana.services.FreeOrderActivityService;
 import com.sakana.web.vo.FreeOrderActivityVO;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,7 @@ public class FreeOrderActivityServiceImpl implements FreeOrderActivityService {
 
     private final FreeOrderActivityMapper activityMapper;
     private final FreeOrderCouponMapper couponMapper;
+    private final CouponMetrics couponMetrics;
 
     @Override
     public Long createActivity(String name,
@@ -105,6 +107,8 @@ public class FreeOrderActivityServiceImpl implements FreeOrderActivityService {
         long costMs = System.currentTimeMillis() - startMs;
         log.info("[发布免单活动] 批量预热完成: id={}, total={}, batches={}, costMs={}",
                 activityId, total, totalBatches, costMs);
+        // P3-MONITORING：批量预热总耗时 + 批次数上报
+        couponMetrics.recordWarmup(costMs, totalBatches);
 
         // 3. 更新活动状态为 PUBLISHED
         activity.setStatus(FreeOrderActivityStatus.PUBLISHED.code());

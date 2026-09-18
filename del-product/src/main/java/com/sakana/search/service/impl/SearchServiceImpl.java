@@ -21,6 +21,7 @@ import com.sakana.search.dto.SearchRequest;
 import com.sakana.search.dto.SearchResponse;
 import com.sakana.search.service.*;
 import com.sakana.search.tokenizer.ChineseTokenizer;
+import com.sakana.metrics.SearchMetrics;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -61,6 +62,7 @@ public class SearchServiceImpl implements SearchService {
     private final QueryParser queryParser;
     private final QueryExpander queryExpander;
     private final ChineseTokenizer chineseTokenizer;
+    private final SearchMetrics searchMetrics;
 
     /** Sentinel 资源名（与 @SentinelResource.value 一致） */
     public static final String RESOURCE = "dishSearch";
@@ -213,6 +215,8 @@ public class SearchServiceImpl implements SearchService {
     public SearchResponse searchBlockHandler(SearchRequest request, BlockException e) {
         log.warn("[搜索] Sentinel 阻断（{}）: query={}, rule={}",
                 e.getClass().getSimpleName(), request.getQuery(), e.getRule());
+        // P3-MONITORING：Sentinel 触发熔断/限流
+        searchMetrics.recordCall(SearchMetrics.OUTCOME_BLOCK, 0);
         return searchFallback(request);
     }
 
@@ -224,6 +228,7 @@ public class SearchServiceImpl implements SearchService {
     public SearchResponse searchFallbackWithEx(SearchRequest request, Throwable e) {
         log.warn("[搜索] 业务异常，降级到 MySQL: query={}, error={}",
                 request.getQuery(), e == null ? "null" : e.getMessage());
+        // P3-MONITORING：业务异常已计入 ERROR；fallback 自身不重复计数（避免双计）
         return searchFallback(request);
     }
 

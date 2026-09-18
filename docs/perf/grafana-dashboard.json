@@ -1,0 +1,135 @@
+{
+  "title": "delivery-cloud 业务监控",
+  "tags": ["delivery-cloud", "prometheus", "spring-boot"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "application",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(dish_search_calls_total, application)",
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "菜品搜索 RPS (by outcome)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        { "expr": "sum by (outcome) (rate(dish_search_calls_total{application=\"$application\"}[1m]))", "legendFormat": "{{outcome}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "菜品搜索 P50/P95/P99 (ms)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(dish_search_latency_seconds_bucket{application=\"$application\"}[5m])) by (le))", "legendFormat": "P50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(dish_search_latency_seconds_bucket{application=\"$application\"}[5m])) by (le))", "legendFormat": "P95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(dish_search_latency_seconds_bucket{application=\"$application\"}[5m])) by (le))", "legendFormat": "P99" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "搜索降级率 (= block+fallback+error / total)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red", "value": 0.20 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "expr": "sum(rate(dish_search_calls_total{outcome=~\"block|fallback|error\",application=\"$application\"}[5m])) / sum(rate(dish_search_calls_total{application=\"$application\"}[5m]))" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "抢免单 RPS (by outcome)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        { "expr": "sum by (outcome) (rate(coupon_grab_attempts_total{application=\"$application\"}[1m]))", "legendFormat": "{{outcome}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "抢免单 P95 / P99 (ms)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(coupon_grab_latency_seconds_bucket{application=\"$application\"}[5m])) by (le))", "legendFormat": "P95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(coupon_grab_latency_seconds_bucket{application=\"$application\"}[5m])) by (le))", "legendFormat": "P99" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "免单券抢空速率 (quota_exhausted/min)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        { "expr": "sum(rate(coupon_grab_attempts_total{outcome=\"quota_exhausted\",application=\"$application\"}[5m])) * 60" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "最近一次免单预热耗时 (s)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "max(coupon_warmup_duration_seconds_sum{application=\"$application\"})" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "索引重建耗时 (s)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "max(dish_index_rebuild_duration_seconds_sum{application=\"$application\"})" }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "异步线程池指标 (default executor)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 22 },
+      "targets": [
+        { "expr": "executor_active_threads{application=\"$application\"}", "legendFormat": "active" },
+        { "expr": "executor_pool_size{application=\"$application\"}", "legendFormat": "pool_size" },
+        { "expr": "executor_queue_size{application=\"$application\"}", "legendFormat": "queue_size" }
+      ]
+    }
+  ]
+}

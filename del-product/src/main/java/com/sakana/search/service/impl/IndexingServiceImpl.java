@@ -16,8 +16,13 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.IndexOperations;
 import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
+import com.sakana.configs.AsyncConfig;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+
+import java.util.concurrent.TimeUnit;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -51,6 +56,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final EmbeddingClient embeddingClient;
     private final ChineseTokenizer chineseTokenizer;
     private final ObjectProvider<ElasticsearchOperations> elasticsearchOperationsProvider;
+    private final MeterRegistry meterRegistry;
 
     private final AtomicInteger successCount = new AtomicInteger(0);
     private final AtomicInteger failCount = new AtomicInteger(0);
@@ -58,9 +64,15 @@ public class IndexingServiceImpl implements IndexingService {
     private volatile int totalCount = 0;
 
     @Override
-    @Async
+    @Async(AsyncConfig.INDEX_EXECUTOR)
     public CompletableFuture<IndexTask> rebuildAllIndexAsync() {
+        long start = System.currentTimeMillis();
         IndexTask task = rebuildAll();
+        // P3-MONITORING：索引重建总耗时
+        Timer.builder("dish.index.rebuild.duration")
+                .description("ES dish索引全量重建耗时")
+                .register(meterRegistry)
+                .record(System.currentTimeMillis() - start, TimeUnit.MILLISECONDS);
         return CompletableFuture.completedFuture(task);
     }
 

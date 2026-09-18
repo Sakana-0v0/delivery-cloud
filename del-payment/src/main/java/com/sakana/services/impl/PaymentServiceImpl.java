@@ -23,6 +23,7 @@ import com.sakana.exceptions.BizException;
 import com.sakana.feign.OrderClient;
 import com.sakana.feign.UserClient;
 import com.sakana.feign.vo.OrderSnapshotVO;
+import com.sakana.services.FreeOrderGrabService;
 import com.sakana.services.PaymentService;
 import com.sakana.web.vo.PaymentInternalVO;
 import com.sakana.web.vo.PaymentStatusVO;
@@ -41,46 +42,38 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-/**
- * 支付服务实现（拆分后核心改造版本）。
- *
- * <h2>解耦要点</h2>
- * <ul>
- *   <li><b>原耦合 ①</b>：handleNotify 直接调 orderMapper.updateById 改订单状态 —— 现已删除，改为 INSERT pay_outbox，订单状态由 del-order 订阅 MQ 自行更新</li>
- *   <li><b>原耦合 ②</b>：handleNotify 直接调 userMapper.selectById 取用户名/邮箱 —— 现已删除，用户信息走创建支付时缓存到 Redis 的快照</li>
- *   <li><b>原耦合 ③</b>：调用 OrderStatus.of(...).canPay() 校验 —— 现已删除，由 del-order 暴露的 OrderSnapshotVO.canPay 字段替代</li>
- *   <li><b>原耦合 ④</b>：publishEvent(OrderPaidEvent) —— 现已删除，改用 PayOutboxRelay → RabbitMQ 广播</li>
- * </ul>
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class PaymentServiceImpl implements PaymentService {
 
-    /** Redis key 前缀：订单快照（userId + username + email 等），TTL 30 分钟 */
     private static final String SNAPSHOT_KEY_PREFIX = "pay:order-snapshot:";
     private static final long SNAPSHOT_TTL_MINUTES = 30;
 
     private final AlipayClient alipayClient;
     private final AlipayProperties alipayProperties;
-
-    // ★ 与原版相比，删除了 OrderMapper、UserMapper、ApplicationEventPublisher
     private final PaymentMapper paymentMapper;
     private final PayOutboxMapper outboxMapper;
-    private final OrderClient orderClient;          // ★ Feign 替代 OrderMapper
-    private final UserClient userClient;            // ★ Feign 兜底替代 UserMapper
+    private final OrderClient orderClient;
+    private final UserClient userClient;
     private final RedisTemplate<String, OrderSnapshotVO> redisTemplate;
+    private final FreeOrderGrabService freeOrderGrabService;
 
     private final ObjectMapper objectMapper = new ObjectMapper()
             .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
 
     // ====================================================================
-    // 1. createPayment
+    // 1. createPayment（含免单逻辑）
     // ====================================================================
-    @Override
+    // @Override  // 2-param overload, not in interface
     public PaymentVO createPayment(Long userId, Long orderId) {
+        return createPayment(userId, orderId, null);
+    }
+
+    @Override
+    public PaymentVO createPayment(Long userId, Long orderId, String freeOrderCode) {
         log.info("[创建支付] ========== START ==========");
-        log.info("[创建支付] userId={}, orderId={}", userId, orderId);
+        log.info("[创建支付] userId={}, orderId={}, freeOrderCode={}", userId, orderId, freeOrderCode);
 
         log.info("========== [创建支付] 支付宝配置传输明细 ==========");
         log.info("[配置传输] gateway     = {}", alipayProperties.getGateway());
@@ -89,64 +82,122 @@ public class PaymentServiceImpl implements PaymentService {
         log.info("[配置传输] returnUrl   = {}", alipayProperties.getReturnUrl());
         log.info("====================================================");
 
-        // 1. ★ 通过 Feign 取订单快照（替代原 orderMapper.selectById）
+        // 1. 通过 Feign 取订单快照
         OrderSnapshotVO order = fetchOrderSnapshot(orderId);
         log.info("[创建支付] 订单快照: orderNo={}, status={}, payAmount={}, userId={}",
                 order.getOrderNo(), order.getStatus(), order.getPayAmount(), order.getUserId());
 
-        // 2. 鉴权 + 可付性校验（用 del-order 返回的 canPay，不再调 OrderStatus.of）
+        // 2. 鉴权 + 可付性校验
         if (!order.getUserId().equals(userId)) {
-            log.warn("[创建支付] 订单不属于该用户: orderId={}, userId={}, orderUserId={}",
-                    orderId, userId, order.getUserId());
-            throw new BizException(PayErrorCode.PAY_CREATE_FAIL,
-                    "无权访问此订单");
+            throw new BizException(PayErrorCode.PAY_CREATE_FAIL, "无权为他人创建支付");
         }
-        if (Boolean.FALSE.equals(order.getCanPay())) {
-            log.warn("[创建支付] 订单不可支付: orderId={}, status={}, canPay={}",
-                    orderId, order.getStatus(), order.getCanPay());
+        if (!Boolean.TRUE.equals(order.getCanPay())) {
+            throw new BizException(PayErrorCode.PAY_CREATE_FAIL, "当前订单状态不允许支付");
+        }
+
+        // 3. 幂等：检查是否已有成功支付记录
+        Payment existing = paymentMapper.selectOne(
+                new LambdaQueryWrapper<Payment>()
+                        .eq(Payment::getOrderId, orderId)
+                        .eq(Payment::getStatus, PayStatus.SUCCESS.code()));
+        if (existing != null) {
+            log.warn("[创建支付] 订单已支付，跳过: orderId={}", orderId);
             throw new BizException(PayErrorCode.PAY_ALREADY_PAID);
         }
 
-        // 3. Idempotency check: reuse existing PENDING payment record
-        String payNo;
-        Payment existingPayment = paymentMapper.selectOne(
-                new LambdaQueryWrapper<Payment>()
-                        .eq(Payment::getOrderNo, order.getOrderNo())
-                        .eq(Payment::getStatus, PayStatus.PENDING.code())
-                        .orderByAsc(Payment::getId)
-                        .last("LIMIT 1"));
-        
-        if (existingPayment != null) {
-            payNo = existingPayment.getPayNo();
-            log.info("[创建支付] 复用已存在的 PENDING 支付记录: payNo={}, id={}",
-                    payNo, existingPayment.getId());
-        } else {
-            payNo = UUID.randomUUID().toString().replace("-", "");
-            log.info("[创建支付] 生成新支付流水号: payNo={}", payNo);
-            
-            Payment payment = new Payment();
-            payment.setOrderId(orderId);
-            payment.setOrderNo(order.getOrderNo());
-            payment.setPayNo(payNo);
-            payment.setChannel("alipay");
-            payment.setAmount(order.getPayAmount());
-            payment.setStatus(PayStatus.PENDING.code());
-            paymentMapper.insert(payment);
-            log.info("[创建支付] 支付记录已写入: id={}, payNo={}, amount={}",
-                    payment.getId(), payNo, order.getPayAmount());
+        // ========== ★ BUG-007 智能免单支付 ★ ==========
+        if (freeOrderCode != null && !freeOrderCode.isBlank()) {
+            // 1. 查免单额度
+            BigDecimal freeAmount = freeOrderGrabService.getFreeOrderMaxAmount(freeOrderCode);
+            if (freeAmount == null) {
+                throw new BizException(PayErrorCode.FREE_ORDER_CODE_INVALID, "免单码无效");
+            }
+            // 2. 计算实付金额
+            BigDecimal orderAmount = order.getPayAmount();
+            BigDecimal finalAmount = freeOrderGrabService.calculateFinalAmount(orderAmount, freeAmount);
+            log.info("[创建支付] 免单计算: orderAmount={}, freeAmount={}, finalAmount={}",
+                    orderAmount, freeAmount, finalAmount);
+            // 3. 智能分派：0 元不走支付宝，>0 元部分免单走支付宝
+            if (finalAmount.signum() == 0) {
+                return doFreeOrderPayment(userId, orderId, order, freeOrderCode, finalAmount);
+            } else {
+                return doPartialFreeOrderPayment(userId, orderId, order, freeOrderCode, finalAmount);
+            }
         }
 
-        // 5. ★ 缓存订单快照到 Redis（替代回调时读 UserMapper）
+        // ========== 正常支付宝支付（无免单）==========
+        return doAlipayPayment(userId, orderId, order, order.getPayAmount());
+    }
+
+    /**
+     * 免单支付：0元直接标成功 + 写 PayOutbox
+     */
+    @Transactional(rollbackFor = Exception.class)
+    protected PaymentVO doFreeOrderPayment(Long userId, Long orderId,
+                                           OrderSnapshotVO order, String freeOrderCode, BigDecimal finalAmount) {
+        log.info("[免单支付] 开始 freeOrderCode={}, orderNo={}", freeOrderCode, order.getOrderNo());
+
+        // 原子化使用免单码（校验本人+未使用）
+        boolean applied = freeOrderGrabService.applyFreeOrder(freeOrderCode, userId, orderId);
+        if (!applied) {
+            throw new BizException(PayErrorCode.FREE_ORDER_CODE_INVALID);
+        }
+
+        String payNo = "FREE" + System.currentTimeMillis();
+
+        // 写 Payment 记录（0元成功）
+        Payment payment = new Payment();
+        payment.setOrderId(orderId);
+        payment.setOrderNo(order.getOrderNo());
+        payment.setPayNo(payNo);
+        payment.setChannel("FREE_ORDER");
+        payment.setAmount(finalAmount);
+        payment.setStatus(PayStatus.SUCCESS.code());
+        payment.setPaidAt(LocalDateTime.now());
+        payment.setTradeNo(payNo);
+        paymentMapper.insert(payment);
+        log.info("[免单支付] Payment 已写入: payNo={}, amount=0", payNo);
+
+        // 写 PayOutbox（触发 MQ，del-order 更新订单状态）
+        writeOutbox(payment, order, payNo);
+
+        PaymentVO vo = new PaymentVO();
+        vo.setOrderNo(order.getOrderNo());
+        vo.setFreeOrder(true);
+        vo.setFreeOrderCode(freeOrderCode);
+        vo.setPaidAmount(BigDecimal.ZERO);
+        vo.setStatus("SUCCESS");
+        log.info("[免单支付] ========== SUCCESS ==========");
+        return vo;
+    }
+
+    /**
+     * 正常支付宝支付
+     */
+    private PaymentVO doAlipayPayment(Long userId, Long orderId, OrderSnapshotVO order, BigDecimal amount) {
+        String payNo = "PAY" + System.currentTimeMillis();
+
+        // 写 Payment 记录（待支付）
+        Payment payment = new Payment();
+        payment.setOrderId(orderId);
+        payment.setOrderNo(order.getOrderNo());
+        payment.setPayNo(payNo);
+        payment.setChannel("alipay");
+        payment.setAmount(amount);
+        payment.setStatus(PayStatus.PENDING.code());
+        paymentMapper.insert(payment);
+
+        // 缓存快照
         cacheOrderSnapshot(order);
 
-        // 6. 调用支付宝 SDK 生成支付表单
+        // 调支付宝
         AlipayTradePagePayRequest request = new AlipayTradePagePayRequest();
         request.setReturnUrl(alipayProperties.getReturnUrl());
         request.setNotifyUrl(alipayProperties.getNotifyUrl());
 
         Map<String, Object> bizMap = new LinkedHashMap<>();
         bizMap.put("out_trade_no", payNo);
-        bizMap.put("total_amount", order.getPayAmount().toString());
+        bizMap.put("total_amount", amount.toString());
         bizMap.put("subject", "外卖订单-" + order.getOrderNo());
         bizMap.put("product_code", "FAST_INSTANT_TRADE_PAY");
         String bizContent;
@@ -167,6 +218,9 @@ public class PaymentServiceImpl implements PaymentService {
                 PaymentVO vo = new PaymentVO();
                 vo.setOrderNo(order.getOrderNo());
                 vo.setPayForm(response.getBody());
+                vo.setFreeOrder(false);
+                vo.setPaidAmount(order.getPayAmount());
+                vo.setStatus("PENDING");
                 log.info("[创建支付] ========== SUCCESS ==========");
                 return vo;
             } else {
@@ -183,25 +237,22 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     // ====================================================================
-    // 2. handleNotify —— ★ 核心改造
+    // 2. handleNotify
     // ====================================================================
     @Override
     @Transactional(rollbackFor = Exception.class)
     public String handleNotify(Map<String, String> params) {
-        log.info("[支付回调] [Controller] 收到回调, params={}", params);
+        log.info("[支付回调] 收到回调, params={}", params);
 
         String payNo = params.get("out_trade_no");
         String tradeStatus = params.get("trade_status");
         String totalAmount = params.get("total_amount");
         String tradeNo = params.get("trade_no");
-        log.info("[支付回调] 关键参数: payNo={}, tradeStatus={}, totalAmount={}, tradeNo={}",
-                payNo, tradeStatus, totalAmount, tradeNo);
 
-        // 1. 验签（Alipay SDK 留在本服务，不外泄）
+        // 1. 验签
         try {
             boolean signCheck = AlipaySignature.rsaCheckV1(
                     params, alipayProperties.getPublicKey(), "UTF-8", "RSA2");
-            log.info("[支付回调] 验签结果: {}", signCheck);
             if (!signCheck) {
                 log.warn("[支付回调] 验签失败: payNo={}", payNo);
                 return "fail";
@@ -211,22 +262,21 @@ public class PaymentServiceImpl implements PaymentService {
             return "fail";
         }
 
-        // 2. 查询本地支付记录
+        // 2. 查询支付记录
         Payment payment = paymentMapper.selectOne(
                 new LambdaQueryWrapper<Payment>().eq(Payment::getPayNo, payNo));
         if (payment == null) {
             log.warn("[支付回调] 支付记录不存在: payNo={}", payNo);
             return "fail";
         }
-        log.info("[支付回调] 支付记录状态: status={}, amount={}", payment.getStatus(), payment.getAmount());
 
         // 3. 幂等
         if (payment.getStatus() != null && payment.getStatus() == PayStatus.SUCCESS.code()) {
-            log.info("[支付回调] 幂等跳过: payNo={} 已成功, 不再处理", payNo);
+            log.info("[支付回调] 幂等跳过: payNo={}", payNo);
             return "success";
         }
 
-        // 4. 交易状态检查
+        // 4. 交易状态
         if (!("TRADE_SUCCESS".equals(tradeStatus) || "TRADE_FINISHED".equals(tradeStatus))) {
             log.info("[支付回调] 交易状态非成功: payNo={}, tradeStatus={}", payNo, tradeStatus);
             return "fail";
@@ -239,67 +289,35 @@ public class PaymentServiceImpl implements PaymentService {
             return "fail";
         }
 
-        // 6. ★ 更新本地支付记录（同事务）
+        // 6. 更新 Payment
         payment.setStatus(PayStatus.SUCCESS.code());
         payment.setPaidAt(LocalDateTime.now());
         payment.setTradeNo(tradeNo);
         payment.setRawNotify(params.toString());
         paymentMapper.updateById(payment);
-        log.info("[支付回调] 支付记录已更新: status=1, paidAt={}", payment.getPaidAt());
 
-        // 7. ★ 写 outbox（同事务，事务提交后由 PayOutboxRelay 投递到 MQ）
-        //    ★ 替代原 orderMapper.updateById(改订单状态) + userMapper.selectById(取用户)
-        //       + eventPublisher.publishEvent(OrderPaidEvent) 三步
+        // 7. 写 outbox
         OrderSnapshotVO snapshot = getOrderSnapshot(payment.getOrderNo());
         if (snapshot == null) {
-            // 极端情况：Redis 快照已过期（30 分钟外），fallback 到 del-user Feign 取 email
-            log.warn("[支付回调] 订单快照已过期, orderNo={}, 走兜底 Feign",
-                    payment.getOrderNo());
             snapshot = new OrderSnapshotVO();
             snapshot.setOrderNo(payment.getOrderNo());
             snapshot.setUserId(extractUserIdFromPayment(payment));
             try {
                 if (snapshot.getUserId() != null) {
-                    Map<String, Object> contact = userClient
-                            .getUserContact(snapshot.getUserId()).getData();
+                    Map<String, Object> contact = userClient.getUserContact(snapshot.getUserId()).getData();
                     if (contact != null) {
                         snapshot.setUsername((String) contact.get("username"));
                         snapshot.setEmail((String) contact.get("email"));
                     }
                 }
             } catch (Exception ex) {
-                log.warn("[支付回调] UserClient 兜底失败（不影响支付结果）: {}", ex.toString());
+                log.warn("[支付回调] UserClient 兜底失败: {}", ex.toString());
             }
         }
-
-        String eventId = UUID.randomUUID().toString();
-        PayOutbox outbox = new PayOutbox();
-        outbox.setEventId(eventId);
-        outbox.setPayNo(payNo);
-        outbox.setOrderNo(payment.getOrderNo());
-        outbox.setUserId(snapshot.getUserId());
-        outbox.setUsername(snapshot.getUsername());
-        outbox.setEmail(snapshot.getEmail());
-        outbox.setPayAmount(payment.getAmount());
-        outbox.setPaidAt(payment.getPaidAt());
-        outbox.setTradeNo(tradeNo);
-        outbox.setStatus(PayOutboxStatus.NEW.code());
-        outbox.setRetryCount(0);
-        outboxMapper.insert(outbox);
-        log.info("[支付回调] outbox 已写入: eventId={}, orderNo={}", eventId, payment.getOrderNo());
+        writeOutboxDirect(payment, snapshot, tradeNo);
 
         log.info("[支付回调] ========== SUCCESS ==========");
         return "success";
-    }
-
-    /**
-     * 兜底逻辑：尝试从 Redis 拿快照以获取 userId；拿不到则返回 null（不影响支付主流程）。
-     * <p>
-     * 本服务不持有 t_order，无法 selectById(orderId)。这是"不允许批量调用"原则的合法单次例外。
-     */
-    private Long extractUserIdFromPayment(Payment payment) {
-        OrderSnapshotVO cached = getOrderSnapshot(payment.getOrderNo());
-        return cached != null ? cached.getUserId() : null;
     }
 
     // ====================================================================
@@ -309,38 +327,25 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentStatusVO queryStatus(Long userId, String orderNo) {
         log.info("[查询状态] userId={}, orderNo={}", userId, orderNo);
 
-        // 1. 用支付记录的 orderId 反查订单做归属校验（替代直接 orderMapper.selectOne(orderNo)）
+        Payment paymentForCheck = paymentMapper.selectOne(
+                new LambdaQueryWrapper<Payment>().eq(Payment::getOrderNo, orderNo));
+        if (paymentForCheck == null) {
+            throw new BizException(PayErrorCode.PAY_NOT_FOUND, "订单不存在或尚未发起支付");
+        }
+
         OrderSnapshotVO order = null;
         try {
-            Payment paymentForCheck = paymentMapper.selectOne(
-                    new LambdaQueryWrapper<Payment>().eq(Payment::getOrderNo, orderNo));
-            if (paymentForCheck != null) {
-                order = fetchOrderSnapshot(paymentForCheck.getOrderId());
-            }
+            order = fetchOrderSnapshot(paymentForCheck.getOrderId());
         } catch (Exception e) {
-            log.warn("[查询状态] 取订单快照失败（不影响主流程）: {}", e.toString());
+            log.warn("[查询状态] 取订单快照失败: {}", e.toString());
         }
 
-        log.info("[查询状态] 订单查询: orderNo={}, found={}", orderNo, order != null);
-
-        if (order == null) {
-            log.warn("[查询状态] 订单不存在: orderNo={}", orderNo);
-            throw new BizException(PayErrorCode.PAY_NOT_FOUND,
-                    "订单不存在或尚未发起支付");
-        }
-        if (!order.getUserId().equals(userId)) {
-            log.warn("[查询状态] 订单不属于该用户: orderNo={}, userId={}, orderUserId={}",
-                    orderNo, userId, order.getUserId());
+        if (order != null && !order.getUserId().equals(userId)) {
             throw new BizException(PayErrorCode.PAY_CREATE_FAIL, "无权访问此订单");
         }
 
-        // 2. 查询本地支付记录
         Payment payment = paymentMapper.selectOne(
                 new LambdaQueryWrapper<Payment>().eq(Payment::getOrderNo, orderNo));
-        log.info("[查询状态] 支付记录查询: orderNo={}, found={}, status={}, amount={}",
-                orderNo, payment != null,
-                payment != null ? payment.getStatus() : "N/A",
-                payment != null ? payment.getAmount() : "N/A");
 
         PaymentStatusVO vo = new PaymentStatusVO();
         vo.setOrderNo(orderNo);
@@ -348,82 +353,31 @@ public class PaymentServiceImpl implements PaymentService {
             vo.setPayNo(payment.getPayNo());
             vo.setStatus(payment.getStatus());
             vo.setPaidAt(payment.getPaidAt());
-            vo.setAmount(payment.getAmount());
-        } else {
-            vo.setStatus(PayStatus.PENDING.code());
         }
 
-        // 3. 调用支付宝 API 查询真实交易状态（保留原版逻辑）
-        if (payment != null && payment.getPayNo() != null) {
+        if (payment != null && payment.getStatus() != null
+                && payment.getStatus() == PayStatus.SUCCESS.code()) {
+            // 本地已成功
+        } else if (payment != null && "alipay".equals(payment.getChannel())) {
+            // 支付宝：轮询查询
             try {
-                AlipayTradeQueryRequest queryRequest = new AlipayTradeQueryRequest();
-                Map<String, Object> queryMap = new LinkedHashMap<>();
-                queryMap.put("out_trade_no", payment.getPayNo());
-                queryRequest.setBizContent(objectMapper.writeValueAsString(queryMap));
-
-                AlipayTradeQueryResponse queryResponse = alipayClient.execute(queryRequest);
-                log.info("[查询状态] [支付宝查询] isSuccess={}, code={}, msg={}, tradeStatus={}",
-                        queryResponse.isSuccess(), queryResponse.getCode(),
-                        queryResponse.getMsg(), queryResponse.getTradeStatus());
-
-                if (queryResponse.isSuccess() && queryResponse.getTradeStatus() != null) {
-                    vo.setTradeNo(queryResponse.getTradeNo());
-                    vo.setBuyerUserId(queryResponse.getBuyerUserId());
-                    vo.setBuyerLogonId(queryResponse.getBuyerLogonId());
-
-                    String alipayTradeStatus = queryResponse.getTradeStatus();
-                    if ("TRADE_SUCCESS".equals(alipayTradeStatus)
-                            || "TRADE_FINISHED".equals(alipayTradeStatus)) {
-                        if (payment.getStatus() == null
-                                || payment.getStatus() != PayStatus.SUCCESS.code()) {
-                            payment.setStatus(PayStatus.SUCCESS.code());
-                            payment.setTradeNo(queryResponse.getTradeNo());
-                            payment.setPaidAt(LocalDateTime.now());
-                            paymentMapper.updateById(payment);
-                            log.info("[查询状态] [支付宝查询] 已同步支付状态到本地: payNo={}",
-                                    payment.getPayNo());
-                        }
-                        vo.setStatus(PayStatus.SUCCESS.code());
-                    } else if ("WAIT_BUYER_PAY".equals(alipayTradeStatus)) {
-                        vo.setStatus(PayStatus.PENDING.code());
-                    }
-                }
-            } catch (Exception e) {
-                log.error("[查询状态] [支付宝查询] 异常: orderNo={}", orderNo, e);
-                
-                // 兜底逻辑：SDK 异常但响应可能含有效状态
-                String errorMsg = e.getMessage() != null ? e.getMessage() : "";
-                
-                // 场景1：SDK 异常但响应含 TRADE_SUCCESS
-                if (errorMsg.contains("TRADE_SUCCESS")) {
-                    log.warn("[查询状态] [兜底] SDK异常但响应含 TRADE_SUCCESS，手动标记支付成功");
-                    String extractedTradeNo = extractTradeNo(errorMsg);
-                    if (payment.getStatus() == null
-                            || payment.getStatus() != PayStatus.SUCCESS.code()) {
-                        payment.setStatus(PayStatus.SUCCESS.code());
-                        payment.setPaidAt(LocalDateTime.now());
-                        if (extractedTradeNo != null) {
-                            payment.setTradeNo(extractedTradeNo);
-                        }
-                        paymentMapper.updateById(payment);
-                        log.info("[查询状态] [兜底1] 已同步支付状态到本地: payNo={}", payment.getPayNo());
-                    }
-                    vo.setStatus(PayStatus.SUCCESS.code());
-                    vo.setTradeNo(extractedTradeNo);
-                }
-                else if (payment.getStatus() != null
-                        && payment.getStatus() == PayStatus.PENDING.code()
-                        && (errorMsg.contains("TRADE_NOT_EXIST")
-                        || errorMsg.contains("sign check fail")
-                        || errorMsg.contains("check Sign and Data Fail"))) {
-                    log.warn("[查询状态] [兜底2] 沙箱SDK异常但本地PENDING，标记支付成功: errorMsg={}", errorMsg);
+                AlipayTradeQueryRequest queryReq = new AlipayTradeQueryRequest();
+                queryReq.setBizContent("{\"out_trade_no\":\"" + payment.getPayNo() + "\"}");
+                AlipayTradeQueryResponse queryResp = alipayClient.execute(queryReq);
+                if (queryResp.isSuccess() && "TRADE_SUCCESS".equals(queryResp.getTradeStatus())) {
                     payment.setStatus(PayStatus.SUCCESS.code());
                     payment.setPaidAt(LocalDateTime.now());
+                    payment.setTradeNo(queryResp.getTradeNo());
                     paymentMapper.updateById(payment);
                     vo.setStatus(PayStatus.SUCCESS.code());
-                    log.info("[查询状态] [兜底2] 已同步支付状态到本地: payNo={}", payment.getPayNo());
+                    log.info("[查询状态] 支付宝轮询成功: payNo={}", payment.getPayNo());
                 }
+            } catch (Exception e) {
+                log.warn("[查询状态] 支付宝轮询失败: {}", e.toString());
             }
+        } else if (order != null && Boolean.TRUE.equals(order.getCanPay())
+                && (payment == null || payment.getStatus() != PayStatus.SUCCESS.code())) {
+            log.info("[查询状态] 本地无支付记录但订单可付，标失败: orderNo={}", orderNo);
         }
 
         log.info("[查询状态] 返回: orderNo={}, payStatus={}", orderNo, vo.getStatus());
@@ -431,11 +385,10 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     // ====================================================================
-    // 4. 内部 API（Feign 入口）
+    // 4. 内部 API
     // ====================================================================
     @Override
     public PaymentInternalVO queryByOrderNo(String orderNo) {
-        log.info("[内部API] queryByOrderNo orderNo={}", orderNo);
         Payment payment = paymentMapper.selectOne(
                 new LambdaQueryWrapper<Payment>().eq(Payment::getOrderNo, orderNo));
         return PaymentInternalVO.from(payment);
@@ -443,7 +396,6 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public boolean isOrderPaid(String orderNo) {
-        log.info("[内部API] isOrderPaid orderNo={}", orderNo);
         Payment payment = paymentMapper.selectOne(
                 new LambdaQueryWrapper<Payment>().eq(Payment::getOrderNo, orderNo));
         return payment != null
@@ -461,28 +413,70 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
+    @Override
+    public Long findOrderIdByOrderNo(String orderNo) {
+        if (orderNo == null || orderNo.isBlank()) {
+            return null;
+        }
+        Payment payment = paymentMapper.selectOne(
+                new LambdaQueryWrapper<Payment>().eq(Payment::getOrderNo, orderNo));
+        return payment == null ? null : payment.getOrderId();
+    }
+
     // ====================================================================
     // 私有辅助
     // ====================================================================
 
-    /**
-     * 从 Alipay 异常消息中提取 trade_no
-     */
-    private String extractTradeNo(String errorMsg) {
-        if (errorMsg == null || errorMsg.isEmpty()) {
-            return null;
-        }
-        // 匹配: "trade_no":"1234567890"
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-                "\"trade_no\"\\s*:\\s*\"([0-9]+)\"");
-        java.util.regex.Matcher matcher = pattern.matcher(errorMsg);
-        if (matcher.find()) {
-            return matcher.group(1);
-        }
-        return null;
+    private void writeOutbox(Payment payment, OrderSnapshotVO order, String tradeNo) {
+        String eventId = UUID.randomUUID().toString();
+        PayOutbox outbox = new PayOutbox();
+        outbox.setEventId(eventId);
+        outbox.setPayNo(payment.getPayNo());
+        outbox.setOrderNo(payment.getOrderNo());
+        outbox.setUserId(order.getUserId());
+        outbox.setUsername(order.getUsername());
+        outbox.setEmail(order.getEmail());
+        outbox.setPayAmount(payment.getAmount());
+        outbox.setPaidAt(payment.getPaidAt());
+        outbox.setTradeNo(tradeNo);
+        outbox.setStatus(PayOutboxStatus.NEW.code());
+        outbox.setRetryCount(0);
+        outboxMapper.insert(outbox);
+        log.info("[免单支付] outbox 已写入: eventId={}, orderNo={}", eventId, payment.getOrderNo());
     }
 
-        private OrderSnapshotVO fetchOrderSnapshot(Long orderId) {
+    private void writeOutboxDirect(Payment payment, OrderSnapshotVO snapshot, String tradeNo) {
+        String eventId = UUID.randomUUID().toString();
+        PayOutbox outbox = new PayOutbox();
+        outbox.setEventId(eventId);
+        outbox.setPayNo(payment.getPayNo());
+        outbox.setOrderNo(payment.getOrderNo());
+        outbox.setUserId(snapshot.getUserId());
+        outbox.setUsername(snapshot.getUsername());
+        outbox.setEmail(snapshot.getEmail());
+        outbox.setPayAmount(payment.getAmount());
+        outbox.setPaidAt(payment.getPaidAt());
+        outbox.setTradeNo(tradeNo);
+        outbox.setStatus(PayOutboxStatus.NEW.code());
+        outbox.setRetryCount(0);
+        outboxMapper.insert(outbox);
+        log.info("[支付回调] outbox 已写入: eventId={}, orderNo={}", eventId, payment.getOrderNo());
+    }
+
+    private void cacheOrderSnapshot(OrderSnapshotVO order) {
+        try {
+            redisTemplate.opsForValue().set(
+                    SNAPSHOT_KEY_PREFIX + order.getOrderNo(),
+                    order,
+                    SNAPSHOT_TTL_MINUTES,
+                    TimeUnit.MINUTES);
+        } catch (Exception e) {
+            log.warn("[Redis] 缓存订单快照失败: orderNo={}, err={}",
+                    order.getOrderNo(), e.toString());
+        }
+    }
+
+    private OrderSnapshotVO fetchOrderSnapshot(Long orderId) {
         R<OrderSnapshotVO> resp = orderClient.getOrderForPayment(orderId);
         if (resp == null || resp.getCode() == null || resp.getCode() != 0 || resp.getData() == null) {
             String msg = resp == null ? "no response" :
@@ -493,28 +487,11 @@ public class PaymentServiceImpl implements PaymentService {
         return resp.getData();
     }
 
-    /**
-     * 创建支付成功后，把订单快照（含 username/email）缓存到 Redis 30 分钟，
-     * 供支付宝异步回调时使用（替代回调里读 UserMapper）。
-     */
-    private void cacheOrderSnapshot(OrderSnapshotVO order) {
-        try {
-            redisTemplate.opsForValue().set(
-                    SNAPSHOT_KEY_PREFIX + order.getOrderNo(),
-                    order,
-                    SNAPSHOT_TTL_MINUTES,
-                    TimeUnit.MINUTES);
-            log.debug("[Redis] 订单快照已缓存: orderNo={}, TTL={}min",
-                    order.getOrderNo(), SNAPSHOT_TTL_MINUTES);
-        } catch (Exception e) {
-            log.warn("[Redis] 缓存订单快照失败（不影响主流程）: orderNo={}, err={}",
-                    order.getOrderNo(), e.toString());
-        }
+    private Long extractUserIdFromPayment(Payment payment) {
+        OrderSnapshotVO cached = getOrderSnapshot(payment.getOrderNo());
+        return cached != null ? cached.getUserId() : null;
     }
 
-    /**
-     * 从 PayOutbox 构造 OrderPaidPayload（PayOutboxRelay 调用）
-     */
     public OrderPaidPayload buildPayload(PayOutbox outbox) {
         return OrderPaidPayload.builder()
                 .eventId(outbox.getEventId())
@@ -530,18 +507,24 @@ public class PaymentServiceImpl implements PaymentService {
                 .build();
     }
 
-    @Override
-    public Long findOrderIdByOrderNo(String orderNo) {
-        if (orderNo == null || orderNo.isBlank()) {
-            return null;
+
+    /**
+     * BUG-007：部分免单（订单 > 免单额度）+ 走支付宝
+     */
+    @Transactional(rollbackFor = Exception.class)
+    protected PaymentVO doPartialFreeOrderPayment(Long userId, Long orderId,
+                                                  OrderSnapshotVO order, String freeOrderCode,
+                                                  BigDecimal finalAmount) {
+        log.info("[部分免单] 开始 code={}, orderAmount={}, finalAmount={}",
+                freeOrderCode, order.getPayAmount(), finalAmount);
+
+        // 1. 标记免单码为 USED
+        boolean applied = freeOrderGrabService.applyFreeOrder(freeOrderCode, userId, orderId);
+        if (!applied) {
+            throw new BizException(PayErrorCode.FREE_ORDER_CODE_INVALID);
         }
-        Payment payment = paymentMapper.selectOne(
-                new LambdaQueryWrapper<Payment>().eq(Payment::getOrderNo, orderNo));
-        return payment == null ? null : payment.getOrderId();
+
+        // 2. 走支付宝（用 finalAmount）
+        return doAlipayPayment(userId, orderId, order, finalAmount);
     }
-
-
 }
-
-
-

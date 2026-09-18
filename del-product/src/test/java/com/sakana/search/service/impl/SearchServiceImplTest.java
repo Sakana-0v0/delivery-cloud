@@ -9,6 +9,7 @@ import com.sakana.dao.mapper.ProductMapper;
 import com.sakana.search.dto.SearchRequest;
 import com.sakana.search.dto.SearchResponse;
 import com.sakana.search.service.*;
+import com.sakana.metrics.SearchMetrics;
 import com.sakana.search.tokenizer.ChineseTokenizer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,13 +56,16 @@ class SearchServiceImplTest {
     @Mock private QueryExpander queryExpander;
     @Mock private ChineseTokenizer chineseTokenizer;
 
+    private SearchMetrics searchMetrics;
     private SearchServiceImpl service;
 
     @BeforeEach
     void setUp() {
+        searchMetrics = new SearchMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
         service = new SearchServiceImpl(
                 esOpsProvider, productMapper, categoryMapper,
-                queryRouter, queryParser, queryExpander, chineseTokenizer
+                queryRouter, queryParser, queryExpander, chineseTokenizer,
+                searchMetrics
         );
         // mock MySQL fallback 返回 1 个 product
         Product p = new Product();
