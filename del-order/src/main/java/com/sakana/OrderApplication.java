@@ -1,7 +1,6 @@
 package com.sakana;
 
-import com.sakana.feign.ProductFeignClient;
-import com.sakana.feign.UserFeignClient;
+
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -18,7 +17,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @SpringBootApplication
 @EnableDiscoveryClient
-@EnableFeignClients(clients = {ProductFeignClient.class, UserFeignClient.class})
+@EnableFeignClients(basePackages = "com.sakana.feign")
 @EnableScheduling
 @MapperScan("com.sakana.dao.mapper")
 public class OrderApplication {

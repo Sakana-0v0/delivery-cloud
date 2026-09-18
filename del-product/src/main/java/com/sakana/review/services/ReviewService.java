@@ -43,4 +43,20 @@ public interface ReviewService {
      * @return 商品全局聚合计数 + 当前用户投票
      */
     VoteResultVO vote(Long userId, Long orderId, Long productId, String type);
+
+    /**
+     * 仅查询投票状态（不修改），用于前端 GET /orders/{orderId}/items/{productId}/vote
+     * 修复 #2 / BUG-010：前端需要 GET 查询"我的当前投票"，返回 likeCount / dislikeCount / myVote
+     */
+    VoteResultVO getMyVote(Long userId, Long orderId, Long productId);
+
+    /**
+     * 批量获取订单项的投票统计（供 del-order 等服务一次拉取多个订单项数据，避免 N 次 RPC）
+     *
+     * @param userId 当前用户 ID（用于查 myVote）
+     * @param items  订单项列表 [(orderId, productId)]
+     * @return 与入参顺序一致的结果列表（含 likeCount/dislikeCount/myVote）
+     */
+    java.util.List<com.sakana.review.web.vo.BatchVoteStatItemVO> batchVoteStat(Long userId, java.util.List<com.sakana.review.dto.request.BatchVoteStatItemReq> items);
 }
+

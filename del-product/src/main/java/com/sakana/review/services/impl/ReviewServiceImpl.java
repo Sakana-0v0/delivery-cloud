@@ -16,6 +16,8 @@ import com.sakana.review.services.ReviewService;
 import com.sakana.review.web.vo.ReviewCountVO;
 import com.sakana.review.web.vo.ReviewSwitchVO;
 import com.sakana.review.web.vo.ReviewVO;
+import com.sakana.review.dto.request.BatchVoteStatItemReq;
+import com.sakana.review.web.vo.BatchVoteStatItemVO;
 import com.sakana.review.web.vo.VoteResultVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +29,9 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 商品售后评价服务实现
@@ -298,4 +303,58 @@ public class ReviewServiceImpl implements ReviewService {
         BeanUtils.copyProperties(r, vo);
         return vo;
     }
+
+
+
+    @Override
+    public VoteResultVO getMyVote(Long userId, Long orderId, Long productId) {
+        if (productId == null) {
+            ReviewCountVO zero = ReviewCountVO.zero();
+            VoteResultVO vo = new VoteResultVO();
+            vo.setLikeCount(zero.getLikeCount());
+            vo.setDislikeCount(zero.getDislikeCount());
+            vo.setMyVote(null);
+            return vo;
+        }
+        ReviewCountVO count = reviewCountCacheService.getCount(productId);
+        if (count == null) count = ReviewCountVO.zero();
+        String myVote = userId == null ? null : reviewCountCacheService.getUserVote(userId, orderId, productId);
+        VoteResultVO vo = new VoteResultVO();
+        vo.setLikeCount(count.getLikeCount());
+        vo.setDislikeCount(count.getDislikeCount());
+        vo.setMyVote(myVote);
+        return vo;
+    }
+    @Override
+    public List<BatchVoteStatItemVO> batchVoteStat(Long userId, List<BatchVoteStatItemReq> items) {
+        if (items == null || items.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+
+        // 1. 收集去重的 productId，一次批查复用 L1 Caffeine / L2 Redis
+        java.util.Set<Long> uniqueProductIds = new HashSet<>();
+        for (BatchVoteStatItemReq it : items) {
+            if (it != null && it.getProductId() != null) {
+                uniqueProductIds.add(it.getProductId());
+            }
+        }
+        Map<Long, ReviewCountVO> countMap = reviewCountCacheService.getCountBatch(uniqueProductIds);
+
+        // 2. 每个订单项单独查 myVote（per-user cache key，暂无 batch）；
+        //    用 ArrayList 按入参顺序 push，保证返回顺序一致
+        List<BatchVoteStatItemVO> results = new java.util.ArrayList<>(items.size());
+        for (BatchVoteStatItemReq it : items) {
+            BatchVoteStatItemVO vo = new BatchVoteStatItemVO();
+            vo.setOrderId(it.getOrderId());
+            vo.setProductId(it.getProductId());
+
+            ReviewCountVO count = it.getProductId() == null ? null : countMap.get(it.getProductId());
+            vo.setLikeCount(count == null ? 0 : count.getLikeCount());
+            vo.setDislikeCount(count == null ? 0 : count.getDislikeCount());
+            vo.setMyVote(reviewCountCacheService.getUserVote(userId, it.getOrderId(), it.getProductId()));
+            results.add(vo);
+        }
+        return results;
+    }
+
 }

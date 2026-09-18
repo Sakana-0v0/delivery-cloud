@@ -221,7 +221,11 @@ public class ReviewCountCacheServiceImpl implements ReviewCountCacheService {
         );
 
         String vote = (review == null) ? "" : (review.getType() == 1 ? "like" : "bad");
-        userVoteCache.put(cacheKey, vote);
+        // 修复：只缓存有票状态。"无票"是合法状态，会被 vote() 异步创建，
+        // 若缓存空字符串，下次查询在 MQ 落库前会再次缓存回去，造成 30s 内 myVote 永远返回 null
+        if (review != null) {
+            userVoteCache.put(cacheKey, vote);
+        }
         return review == null ? null : vote;
     }
 

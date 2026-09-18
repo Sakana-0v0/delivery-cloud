@@ -1,8 +1,8 @@
 package com.sakana.web.vo;
 
+import java.math.BigDecimal;
 import java.io.Serial;
 import java.io.Serializable;
-import java.math.BigDecimal;
 
 /**
  * 订单项视图
@@ -19,6 +19,24 @@ public class OrderItemVO implements Serializable {
     private BigDecimal productPrice;
     private Integer quantity;
     private BigDecimal subtotalAmount;
+
+    // ==================== P2-2：投票统计回填字段 ====================
+
+    /**
+     * 商品维度全局点赞数（跨订单、跨用户聚合，由 ReviewCountCacheService.getCountBatch 提供）
+     */
+    private Integer likeCount;
+
+    /**
+     * 商品维度全局点踩数（跨订单、跨用户聚合）
+     */
+    private Integer dislikeCount;
+
+    /**
+     * 当前用户对该订单项的投票：{@code "like"} / {@code "bad"} / {@code null}（未投或已取消）
+     * <p>字段命名与 del-product 的 VoteResultVO.myVote 对齐，避免出现 reviewType / myVote 同义不同名
+     */
+    private String myVote;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -40,4 +58,13 @@ public class OrderItemVO implements Serializable {
 
     public BigDecimal getSubtotalAmount() { return subtotalAmount; }
     public void setSubtotalAmount(BigDecimal subtotalAmount) { this.subtotalAmount = subtotalAmount; }
+
+    public Integer getLikeCount() { return likeCount; }
+    public void setLikeCount(Integer likeCount) { this.likeCount = likeCount; }
+
+    public Integer getDislikeCount() { return dislikeCount; }
+    public void setDislikeCount(Integer dislikeCount) { this.dislikeCount = dislikeCount; }
+
+    public String getMyVote() { return myVote; }
+    public void setMyVote(String myVote) { this.myVote = myVote; }
 }

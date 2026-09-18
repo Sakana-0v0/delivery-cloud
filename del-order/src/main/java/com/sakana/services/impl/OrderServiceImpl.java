@@ -17,6 +17,10 @@ import com.sakana.dto.request.admin.AdminOrderStatusReq;
 import com.sakana.enums.OrderStatus;
 import com.sakana.exceptions.BizException;
 import com.sakana.feign.ProductFeignClient;
+import com.sakana.feign.ReviewFeignClient;
+import com.sakana.feign.vo.BatchVoteStatReqVO;
+import com.sakana.feign.vo.BatchVoteStatRespVO;
+import com.sakana.feign.vo.ReviewVoteStatItem;
 import com.sakana.feign.UserFeignClient;
 import com.sakana.feign.vo.ProductSnapshotVO;
 import com.sakana.feign.vo.UserContactVO;
@@ -39,6 +43,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -57,14 +62,19 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     private final UserFeignClient userFeignClient;
     private final ProductFeignClient productFeignClient;
 
+    /** 评价批量统计 Feign 客户端（用于回填订单项 likeCount/dislikeCount/myVote） */
+    private final ReviewFeignClient reviewFeignClient;
+
     public OrderServiceImpl(OrderItemMapper orderItemMapper,
                             OrderOutboxMapper orderOutboxMapper,
                             UserFeignClient userFeignClient,
-                            ProductFeignClient productFeignClient) {
+                            ProductFeignClient productFeignClient,
+                            ReviewFeignClient reviewFeignClient) {
         this.orderItemMapper = orderItemMapper;
         this.orderOutboxMapper = orderOutboxMapper;
         this.userFeignClient = userFeignClient;
         this.productFeignClient = productFeignClient;
+        this.reviewFeignClient = reviewFeignClient;
     }
 
     // ==================== C 端 ====================
@@ -173,7 +183,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
         log.info("[订单创建] outbox 已写入: eventId={}, orderNo={}", outbox.getEventId(), order.getOrderNo());
 
-        return toVO(order, items);
+        return toVO(order, items, userId);
     }
 
     @Override
@@ -191,7 +201,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         List<OrderVO> records = new ArrayList<>();
         for (Order order : pageResult.getRecords()) {
             List<OrderItem> orderItems = itemsMap.getOrDefault(order.getId(), List.of());
-            records.add(toVO(order, orderItems));
+            records.add(toVO(order, orderItems, userId));
         }
 
         OrderPageResp resp = new OrderPageResp();
@@ -214,7 +224,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
         List<OrderItem> orderItems = orderItemMapper.selectList(
                 new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, orderId));
-        return toVO(order, orderItems);
+        return toVO(order, orderItems, userId);
     }
     @Override
     public OrderVO getByOrderNo(Long userId, String orderNo) {
@@ -228,7 +238,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         }
         List<OrderItem> orderItems = orderItemMapper.selectList(
             new LambdaQueryWrapper<OrderItem>().eq(OrderItem::getOrderId, order.getId()));
-        return toVO(order, orderItems);
+        return toVO(order, orderItems, userId);
     }
 
     @Override
@@ -438,7 +448,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         return allItems.stream().collect(Collectors.groupingBy(OrderItem::getOrderId));
     }
 
-    private OrderVO toVO(Order order, List<OrderItem> items) {
+    private OrderVO toVO(Order order, List<OrderItem> items, Long userId) {
         OrderVO vo = new OrderVO();
         BeanUtils.copyProperties(order, vo);
         vo.setStatusDesc(OrderStatus.fromCode(order.getStatus()).getDesc());
@@ -466,7 +476,58 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
             BeanUtils.copyProperties(item, itemVO);
             itemVOs.add(itemVO);
         }
+        fillVoteStats(itemVOs, order.getId(), com.sakana.security.SecurityUtil.getCurrentUserId());
         vo.setItems(itemVOs);
         return vo;
     }
+
+    /**
+     * 批量回填订单项的 likeCount / dislikeCount / myVote（P2-2）
+     *
+     * <p>通过 ReviewFeignClient 一次 RPC 拉取当前用户对所有订单项的投票统计。
+     * 调用失败时仅 log warn，不影响订单主流程（聚合统计是辅助信息）。
+     */
+    private void fillVoteStats(List<OrderItemVO> itemVOs, Long orderId, Long userId) {
+        if (itemVOs == null || itemVOs.isEmpty()) {
+            return;
+        }
+        if (userId == null) {
+            log.warn("[订单项投票统计] userId 为空，跳过回填（前端未传 userId 或未登录）");
+            return;
+        }
+        try {
+            BatchVoteStatReqVO req = new BatchVoteStatReqVO();
+            req.setUserId(userId);
+            List<BatchVoteStatReqVO.Item> pairs = new ArrayList<>(itemVOs.size());
+            for (OrderItemVO item : itemVOs) {
+                BatchVoteStatReqVO.Item pair = new BatchVoteStatReqVO.Item();
+                pair.setOrderId(orderId);
+                pair.setProductId(item.getProductId());
+                pairs.add(pair);
+            }
+            req.setOrderItems(pairs);
+
+            R<BatchVoteStatRespVO> resp = reviewFeignClient.batchStats(req);
+            if (resp == null || resp.getData() == null || resp.getData().getResults() == null) {
+                return;
+            }
+            Map<Long, ReviewVoteStatItem> statMap = new HashMap<>(resp.getData().getResults().size());
+            for (ReviewVoteStatItem stat : resp.getData().getResults()) {
+                if (stat != null && stat.getProductId() != null) {
+                    statMap.put(stat.getProductId(), stat);
+                }
+            }
+            for (OrderItemVO item : itemVOs) {
+                ReviewVoteStatItem stat = item.getProductId() == null ? null : statMap.get(item.getProductId());
+                if (stat == null) continue;
+                item.setLikeCount(stat.getLikeCount());
+                item.setDislikeCount(stat.getDislikeCount());
+                item.setMyVote(stat.getMyVote());
+            }
+        } catch (Exception e) {
+            // 投票统计是辅助字段，失败不阻塞订单列表/详情主流程
+            log.warn("[订单项投票统计] 回填失败 orderId={}, items={}, error={}", orderId, itemVOs.size(), e.getMessage());
+        }
+    }
+
 }
