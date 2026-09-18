@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="评价计数缓存压测 (#REVIEW-CACHE)" enabled="true">
+      <stringProp name="TestPlan.comments">500 RPS 评价点赞/点踩，对比加/不加 Caffeine+Redis 时 MySQL QPS。
+对比步骤：
+  1) 先停 del-product，清空 Caffeine（重启即清）
+  2) 跑本脚本 → MySQL 命中率高
+  3) 再启动 Caffeine+Redis，跑本脚本 → MySQL QPS 应大幅下降
+参数：
+  -JorderId=123
+  -JproductId=abc-001
+依赖：
+  - tokens.csv 同目录</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+    </TestPlan>
+    <hashTree>
+      <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="tokens.csv" enabled="true">
+        <stringProp name="delimiter">,</stringProp>
+        <stringProp name="filename">tokens.csv</stringProp>
+        <boolProp name="recycle">true</boolProp>
+        <stringProp name="shareMode">all</stringProp>
+        <stringProp name="variableNames">userId,token</stringProp>
+      </CSVDataSet>
+      <hashTree/>
+      <Arguments guiclass="ArgumentsPanel" testclass="Arguments" testname="Variables" enabled="true">
+        <collectionProp name="Arguments.arguments">
+          <elementProp name="host" elementType="Argument">
+            <stringProp name="Argument.name">host</stringProp>
+            <stringProp name="Argument.value">${__P(host,127.0.0.1)}</stringProp>
+          </elementProp>
+          <elementProp name="port" elementType="Argument">
+            <stringProp name="Argument.name">port</stringProp>
+            <stringProp name="Argument.value">${__P(port,9800)}</stringProp>
+          </elementProp>
+          <elementProp name="orderId" elementType="Argument">
+            <stringProp name="Argument.name">orderId</stringProp>
+            <stringProp name="Argument.value">${__P(orderId,123)}</stringProp>
+          </elementProp>
+          <elementProp name="productId" elementType="Argument">
+            <stringProp name="Argument.name">productId</stringProp>
+            <stringProp name="Argument.value">${__P(productId,abc-001)}</stringProp>
+          </elementProp>
+        </collectionProp>
+      </Arguments>
+      <hashTree/>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="投票线程组" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
+          <stringProp name="LoopController.loops">${__P(loops,5)}</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,100)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(rampUp,5)}</stringProp>
+      </ThreadGroup>
+      <hashTree>
+        <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Header" enabled="true">
+          <collectionProp name="HeaderManager.headers">
+            <elementProp name="Authorization" elementType="Header">
+              <stringProp name="Header.name">Authorization</stringProp>
+              <stringProp name="Header.value">Bearer ${token}</stringProp>
+            </elementProp>
+            <elementProp name="Content-Type" elementType="Header">
+              <stringProp name="Header.name">Content-Type</stringProp>
+              <stringProp name="Header.value">application/json</stringProp>
+            </elementProp>
+          </collectionProp>
+        </HeaderManager>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST /orders/{orderId}/items/{productId}/vote" enabled="true">
+          <stringProp name="HTTPSampler.domain">${host}</stringProp>
+          <stringProp name="HTTPSampler.port">${port}</stringProp>
+          <stringProp name="HTTPSampler.protocol">http</stringProp>
+          <stringProp name="HTTPSampler.path">/api/v1/orders/${orderId}/items/${productId}/vote</stringProp>
+          <stringProp name="HTTPSampler.method">POST</stringProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="type" elementType="HTTPArgument">
+                <stringProp name="Argument.name">type</stringProp>
+                <stringProp name="Argument.value">1</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="HTTP 2xx/4xx" enabled="true">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp>2..</stringProp>
+              <stringProp>4..</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+            <intProp name="Assertion.test_type">2</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+        </hashTree>
+        <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report" enabled="true">
+          <stringProp name="filename">results/review-cache-summary.csv</stringProp>
+        </ResultCollector>
+        <hashTree/>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

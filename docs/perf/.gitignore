@@ -1,0 +1,6 @@
+# JMeter result files (avoid polluting repo)
+results/*.jtl
+results/*.csv
+results/*.png
+results/*.log
+tokens.csv

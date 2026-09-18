@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="菜品搜索压测 (#SEARCH-SENTINEL)" enabled="true">
+      <stringProp name="TestPlan.comments">500 RPS 持续 60s 跑混合 query（含长尾词），记录 P50/P95/P99 RT。
+参数：
+  -Jhost=127.0.0.1       del-product 直连（绕过网关）或 127.0.0.1:9800 经网关
+  -Jport=9800             端口
+  -JrampUp=10
+  -Jthreads=200           200 线程 × 2 循环 × 5 QPS 控制 = 1000 RPS 目标
+依赖：
+  - queries.csv 同目录，列: query 一列；推荐 100+ 条覆盖长尾
+  - tokens.csv 可选，匿名搜索可不带 token</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+    </TestPlan>
+    <hashTree>
+      <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="queries.csv" enabled="true">
+        <stringProp name="delimiter">,</stringProp>
+        <stringProp name="fileEncoding">UTF-8</stringProp>
+        <stringProp name="filename">queries.csv</stringProp>
+        <boolProp name="recycle">true</boolProp>
+        <stringProp name="shareMode">all</stringProp>
+        <boolProp name="stopThread">false</boolProp>
+        <stringProp name="variableNames">query</stringProp>
+      </CSVDataSet>
+      <hashTree/>
+      <Arguments guiclass="ArgumentsPanel" testclass="Arguments" testname="Variables" enabled="true">
+        <collectionProp name="Arguments.arguments">
+          <elementProp name="host" elementType="Argument">
+            <stringProp name="Argument.name">host</stringProp>
+            <stringProp name="Argument.value">${__P(host,127.0.0.1)}</stringProp>
+          </elementProp>
+          <elementProp name="port" elementType="Argument">
+            <stringProp name="Argument.name">port</stringProp>
+            <stringProp name="Argument.value">${__P(port,9800)}</stringProp>
+          </elementProp>
+        </collectionProp>
+      </Arguments>
+      <hashTree/>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="搜索线程组" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
+          <stringProp name="LoopController.loops">${__P(loops,5)}</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,200)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(rampUp,10)}</stringProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+      </ThreadGroup>
+      <hashTree>
+        <ConstantThroughputTimer guiclass="TestBeanGUI" testclass="ConstantThroughputTimer" testname="Constant Throughput (2000 QPS)">
+          <stringProp name="calcMode">2</stringProp>
+          <doubleProp>
+            <name>throughput</name>
+            <value>2000.0</value>
+          </doubleProp>
+        </ConstantThroughputTimer>
+        <hashTree/>
+        <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Header" enabled="true">
+          <collectionProp name="HeaderManager.headers">
+            <elementProp name="Content-Type" elementType="Header">
+              <stringProp name="Header.name">Content-Type</stringProp>
+              <stringProp name="Header.value">application/json</stringProp>
+            </elementProp>
+          </collectionProp>
+        </HeaderManager>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /search" enabled="true">
+          <stringProp name="HTTPSampler.domain">${host}</stringProp>
+          <stringProp name="HTTPSampler.port">${port}</stringProp>
+          <stringProp name="HTTPSampler.protocol">http</stringProp>
+          <stringProp name="HTTPSampler.path">/api/v1/search</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="query" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                <stringProp name="Argument.name">query</stringProp>
+                <stringProp name="Argument.value">${query}</stringProp>
+                <stringProp name="HTTPArgument.use_equals">true</stringProp>
+              </elementProp>
+              <elementProp name="page" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.name">page</stringProp>
+                <stringProp name="Argument.value">1</stringProp>
+              </elementProp>
+              <elementProp name="size" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.name">size</stringProp>
+                <stringProp name="Argument.value">20</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="HTTP 200" enabled="true">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp>200</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+            <intProp name="Assertion.test_type">2</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+        </hashTree>
+        <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report" enabled="true">
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+          <stringProp name="filename">results/search-throughput-summary.csv</stringProp>
+        </ResultCollector>
+        <hashTree/>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>
