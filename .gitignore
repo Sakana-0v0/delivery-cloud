@@ -49,3 +49,21 @@ result.txt
 
 ### Misc ###
 -w
+# === WIP 清理新增 (2026-09-18) ===
+# 任务派单/历史 dispatch 文档（不进 git，按需 review 后归档）
+docs/WORK_ORDER_*.md
+docs/FREE-ORDER-*_DISPATCH.md
+docs/ARCHIVE_*.md
+
+# 剪贴板导出（IDEA 插件产物）
+2026-09-16-*starpr.txt
+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*-starpr.txt
+
+# 历史 Nacos export snapshot（已被 nacos-config/DEFAULT_GROUP 取代）
+nacos-config/nacos_config_export_*/
+
+# IDE agent memory dump
+.workbuddy-ai/memory/
+
+# 临时 hash 工具
+GenHash.java
