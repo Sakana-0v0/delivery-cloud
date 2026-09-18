@@ -23,7 +23,7 @@ import org.springframework.data.elasticsearch.repository.config.EnableElasticsea
  */
 @Slf4j
 @Configuration
-@ConditionalOnProperty(name = "es.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "es.enabled", havingValue = "true", matchIfMissing = false)
 @EnableElasticsearchRepositories(basePackages = "com.sakana.search.repository")
 public class ElasticsearchConfig {
 

@@ -1,6 +1,8 @@
 package com.sakana.web.controllers;
 
 import com.sakana.feign.vo.ProductSnapshotVO;
+import com.sakana.review.services.ReviewCountCacheService;
+import com.sakana.review.web.vo.ReviewCountVO;
 import com.sakana.services.ProductService;
 import com.sakana.web.vo.ProductPageResp;
 import com.sakana.web.vo.ProductVO;
@@ -27,6 +29,7 @@ import java.util.List;
 public class ProductController {
 
     private final ProductService productService;
+    private final ReviewCountCacheService reviewCountCacheService;
 
     @GetMapping
     @Operation(summary = "商品分页", description = "分页查询商品列表，支持分类筛选和关键词搜索")
@@ -50,6 +53,18 @@ public class ProductController {
         return R.ok(productService.getProductSnapshot(id));
     }
 
+    /**
+     * 修复 #2 / BUG-010：商品评价聚合计数（商品列表/详情点赞踩数量展示）
+     * 走 L1 Caffeine → L2 Redis → L3 MySQL 三级缓存，未命中回源到零值
+     */
+    @GetMapping("/{id}/review-count")
+    @Operation(summary = "商品评价聚合计数", description = "返回该商品的 likeCount / dislikeCount，供前端商品列表/详情展示")
+    public R<ReviewCountVO> getReviewCount(@PathVariable Long id) {
+        ReviewCountVO count = reviewCountCacheService.getCount(id);
+        if (count == null) count = ReviewCountVO.zero();
+        return R.ok(count);
+    }
+
     @GetMapping("/hot")
     @Operation(summary = "热门商品", description = "获取销量最高的N个商品")
     public R<List<ProductVO>> getHot(
@@ -57,3 +72,4 @@ public class ProductController {
         return R.ok(productService.getHotProducts(limit));
     }
 }
+
