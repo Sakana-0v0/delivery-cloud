@@ -2,6 +2,7 @@ package com.sakana.cs.service.tools;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sakana.cs.context.ChatContextHolder;
 import com.sakana.cs.feign.OrderFeignClient;
 import com.sakana.web.vo.OrderVO;
 import com.sakana.web.vo.R;
@@ -11,6 +12,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+/**
+ * ★ P0-UserAuth重构：userId 不再由 LLM 从消息文本提取并回填，
+ * 而是由 ChatContextHolder 透传，避免提示词注入导致越权查询。
+ *
+ * <p>工具方法签名不再暴露 userId 参数，LLM 无需关心身份路由。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -18,19 +25,17 @@ public class OrderDetailTool {
     private final OrderFeignClient orderFeign;
     private final ObjectMapper objectMapper;
 
-    /**
-     * ★ BUG-020：查询指定订单详情
-     * userId 从消息【当前用户ID: xxx】中提取，通过 Tool 参数传入
-     * 不再依赖 ThreadLocal（异步线程会丢失）
-     */
-    @Tool("查询指定订单的详细信息。输入业务订单号（如 ORD20260904TEST_REVIEW_03），返回该订单的完整信息，包括商品列表、价格、状态、时间等。")
-    public String getOrderDetail(
-            @P("用户ID，从消息【当前用户ID: xxx】中提取") String userId,
-            @P("业务订单号（如 ORD20260904TEST_REVIEW_03）") String orderNo) {
-        Long uid = parseUserId(userId);
+    @Tool("查询指定订单的详细信息。输入业务订单号（如 ORD20260904TEST_REVIEW_03）。" +
+          "工具会自动使用当前登录用户的身份验证订单所有权；不要尝试传入或猜测用户ID。")
+    public String getOrderDetail(@P("业务订单号，如 ORD20260904TEST_REVIEW_03") String orderNo) {
+        Long uid = ChatContextHolder.getUserIdAsLong();
         if (uid == null) {
-            log.warn("[OrderDetailTool] userId 无效: {}", userId);
-            return "null";
+            log.warn("[OrderDetailTool] ChatContextHolder 未建立 userId，拒绝查询");
+            return "{\"error\":\"未识别用户身份\"}";
+        }
+        if (orderNo == null || orderNo.isBlank()) {
+            log.warn("[OrderDetailTool] orderNo 为空: userId={}", uid);
+            return "{\"error\":\"订单号不能为空\"}";
         }
         log.info("[OrderDetailTool] userId={}, orderNo={}", uid, orderNo);
         try {
@@ -44,10 +49,5 @@ public class OrderDetailTool {
             log.error("[OrderDetailTool] error={}", e.getMessage(), e);
         }
         return "null";
-    }
-
-    private Long parseUserId(String uid) {
-        if (uid == null || uid.isBlank() || "anonymous".equals(uid)) return null;
-        try { return Long.parseLong(uid); } catch (Exception e) { return null; }
     }
 }

@@ -1,6 +1,8 @@
 package com.sakana.cs.web;
 
 import com.sakana.cs.context.AuthContext;
+import com.sakana.cs.context.ChatContext;
+import com.sakana.cs.context.ChatContextHolder;
 import com.sakana.cs.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +13,15 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.Map;
 
+/**
+ * SSE 聊天入口。
+ *
+ * <p>★ P0-UserAuth重构：在 SSE 入口处建立 ChatContext（userId + token），
+ * 供 LangChain4j 异步 Tool 调用链路使用；userId 不再嵌入 UserMessage 文本，
+ * 由 ChatContextHolder 透传到工具层，避免 LLM 误读/注入导致越权。
+ *
+ * <p>SSE 完成/超时/异常时统一清理 ChatContextHolder 与 AuthContext。
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/cs")
@@ -28,24 +39,25 @@ public class ChatController {
 
         SseEmitter emitter = new SseEmitter(60_000L);
         String userId = AuthContext.getUserId();
+        String token = AuthContext.getToken();
         log.info("[ChatController] 收到消息: userId={}, message={}", userId, message);
 
-        // ★ BUG-019 修复：AuthContext 清理推迟到 SSE 结束后（不再在 Filter finally 中清理）
-        emitter.onCompletion(() -> {
-            log.debug("[ChatController] SSE 完成，清理 AuthContext");
+        // ★ P0-UserAuth重构：在 SSE 入口处建立 ChatContext，工具层不再依赖消息文本里的 userId
+        ChatContextHolder.set(new ChatContext(userId, token, System.currentTimeMillis()));
+
+        Runnable cleanup = () -> {
+            log.debug("[ChatController] SSE 结束，清理 ChatContext/AuthContext");
+            ChatContextHolder.clear();
             AuthContext.clear();
-        });
-        emitter.onTimeout(() -> {
-            log.debug("[ChatController] SSE 超时，清理 AuthContext");
-            AuthContext.clear();
-        });
+        };
+        emitter.onCompletion(cleanup);
+        emitter.onTimeout(cleanup);
         emitter.onError(e -> {
-            log.debug("[ChatController] SSE 异常，清理 AuthContext: {}", e.getMessage());
-            AuthContext.clear();
+            log.debug("[ChatController] SSE 异常，清理上下文: {}", e.getMessage());
+            cleanup.run();
         });
 
         chatService.streamChat(
-            userId,
             message,
             chunk -> {
                 try {

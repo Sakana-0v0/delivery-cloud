@@ -2,6 +2,7 @@ package com.sakana.cs.service.tools;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sakana.cs.context.ChatContextHolder;
 import com.sakana.cs.feign.OrderFeignClient;
 import com.sakana.web.vo.OrderPageResp;
 import com.sakana.web.vo.R;
@@ -11,6 +12,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+/**
+ * ★ P0-UserAuth重构：userId 由 ChatContextHolder 透传，LLM 不再需要关心身份。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -18,18 +22,12 @@ public class OrderHistoryTool {
     private final OrderFeignClient orderFeign;
     private final ObjectMapper objectMapper;
 
-    /**
-     * ★ BUG-020：查询当前用户的订单历史
-     * userId 从消息【当前用户ID: xxx】中提取，通过 Tool 参数传入
-     * 不再依赖 ThreadLocal（异步线程会丢失）
-     */
-    @Tool("查询当前登录用户的订单历史列表。返回订单列表，每条包含订单号、状态、时间、商品信息等。")
-    public String getUserOrderHistory(
-            @P("用户ID，从消息【当前用户ID: xxx】中提取") String userId,
-            @P("最大返回数量，默认5") Integer maxResults) {
-        Long uid = parseUserId(userId);
+    @Tool("查询当前登录用户的订单历史列表。无需传入用户ID，" +
+          "工具会自动用当前登录身份查询属于该用户的订单。")
+    public String getUserOrderHistory(@P("最大返回数量，默认5") Integer maxResults) {
+        Long uid = ChatContextHolder.getUserIdAsLong();
         if (uid == null) {
-            log.warn("[OrderHistoryTool] userId 无效: {}", userId);
+            log.warn("[OrderHistoryTool] ChatContextHolder 未建立 userId，拒绝查询");
             return "[]";
         }
         int size = (maxResults != null && maxResults > 0) ? maxResults : 5;
@@ -45,10 +43,5 @@ public class OrderHistoryTool {
             log.error("[OrderHistoryTool] error={}", e.getMessage(), e);
         }
         return "[]";
-    }
-
-    private Long parseUserId(String uid) {
-        if (uid == null || uid.isBlank() || "anonymous".equals(uid)) return null;
-        try { return Long.parseLong(uid); } catch (Exception e) { return null; }
     }
 }

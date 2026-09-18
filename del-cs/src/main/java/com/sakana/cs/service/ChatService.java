@@ -1,5 +1,6 @@
 package com.sakana.cs.service;
 
+import com.sakana.cs.context.ChatContextHolder;
 import com.sakana.cs.prompt.PromptManager;
 import com.sakana.cs.service.tools.OrderDetailTool;
 import com.sakana.cs.service.tools.OrderHistoryTool;
@@ -16,6 +17,16 @@ import org.springframework.stereotype.Service;
 import jakarta.annotation.PostConstruct;
 import java.util.function.Consumer;
 
+/**
+ * Chat 业务编排（基于 LangChain4j 流式 Agent）。
+ *
+ * <p>★ P0-UserAuth重构：
+ * <ul>
+ *   <li>userId 不再嵌入 UserMessage 文本</li>
+ *   <li>userId 通过 ChatContextHolder 透传到 Tool 层</li>
+ *   <li>memoryId 仍使用 userId，保持按用户隔离会话记忆</li>
+ * </ul>
+ */
 @Slf4j
 @Service
 public class ChatService {
@@ -64,10 +75,11 @@ public class ChatService {
     }
 
     /**
-     * userId 嵌入到消息中，让工具通过 userId 参数获取，
-     * 解决 SSE 异步执行时 ThreadLocal 丢失的问题。
+     * ★ P0-UserAuth重构：userId 不再作为方法参数传入，也不再嵌入 UserMessage 文本。
+     *
+     * @param userMessage 用户原始消息（不含 userId 前缀）
      */
-    public void streamChat(String userId, String userMessage,
+    public void streamChat(String userMessage,
                           Consumer<String> onChunk,
                           Consumer<Void> onComplete,
                           Consumer<Throwable> onError) {
@@ -75,15 +87,20 @@ public class ChatService {
             onError.accept(new IllegalStateException("Assistant 未初始化"));
             return;
         }
-        // ★ BUG-019 修复：在消息中嵌入 userId，让 LLM 传给需要用户ID的工具
-        String enrichedMessage = "【当前用户ID: " + userId + "】" + userMessage;
-        log.info("[ChatService] streamChat userId={}, enrichedMessage={}", userId, enrichedMessage);
+
+        // ★ P0-UserAuth重构：从 ChatContextHolder 取 userId 作为 memoryId
+        String userId = ChatContextHolder.getUserId();
+        if (userId == null || userId.isBlank() || "anonymous".equals(userId)) {
+            log.error("[ChatService] ChatContextHolder 未设置 userId，拒绝响应");
+            onError.accept(new IllegalStateException("用户身份未建立，请重新登录"));
+            return;
+        }
+
+        log.info("[ChatService] streamChat userId={}, message={}", userId, userMessage);
         try {
-            TokenStream stream = assistant.chat(userId, enrichedMessage);
+            TokenStream stream = assistant.chat(userId, userMessage);
             stream
-                .onPartialResponse(token -> {
-                    onChunk.accept(formatSSE("token", token));
-                })
+                .onPartialResponse(token -> onChunk.accept(formatSSE("token", token)))
                 .onToolExecuted(toolExecution -> {
                     log.info("[ChatService] Tool 执行: name={}", toolExecution.request().name());
                     onChunk.accept(formatSSE("tool", toolExecution.toString()));
