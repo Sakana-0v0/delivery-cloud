@@ -28,6 +28,8 @@ class PathRoleRuleTest {
             "/api/v1/products/hot",
             "/api/v1/categories",
             "/api/v1/categories/1",
+            "/api/v1/payments/notify",      // Alipay 异步回调
+            "/api/v1/payments/return",      // Alipay 同步回调
             "/swagger-ui/index.html",
             "/swagger-ui",
             "/v3/api-docs",
@@ -50,7 +52,7 @@ class PathRoleRuleTest {
             "/api/v1/cart/items",
             "/api/v1/messages",
             "/api/v1/admin/messages",       // 路径前缀不带 /api/v1/admin/ 后面
-            "/api/v1/payments/notify",       // 支付回调
+            // /api/v1/payments/notify 已移到 public 列表（Alipay 异步回调需要）
             "/api/v1/internal/orders/1",     // 内部
             "/favicon.ico",                  // 静态资源
             "/api/v1/auth/anything-else",    // 未知 auth 子路径

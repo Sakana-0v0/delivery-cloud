@@ -161,13 +161,15 @@ class PaymentServiceImplTest {
     }
 
     @Test
-    void createPayment_canPayFalse_throwsAlreadyPaid() throws com.alipay.api.AlipayApiException {
-        OrderSnapshotVO s = snapshot(100L, "ORD20260101", 1L, false);  // 已支付
+    void createPayment_canPayFalse_throwsNotPayable() throws com.alipay.api.AlipayApiException {
+        // 新实现语义：canPay=false 走 PAY_CREATE_FAIL 路径
+        // (PAY_ALREADY_PAID 仅在 paymentMapper.selectOne 命中既有支付记录时抛出，见 createPayment_alreadyPaidRecord)
+        OrderSnapshotVO s = snapshot(100L, "ORD20260101", 1L, false);
         when(orderClient.getOrderForPayment(100L)).thenReturn(R.ok(s));
 
         BizException ex = assertThrows(BizException.class,
                 () -> service.createPayment(1L, 100L));
-        assertEquals(PayErrorCode.PAY_ALREADY_PAID.getCode(), ex.getCode());
+        assertEquals(PayErrorCode.PAY_CREATE_FAIL.getCode(), ex.getCode());
     }
 
     @Test

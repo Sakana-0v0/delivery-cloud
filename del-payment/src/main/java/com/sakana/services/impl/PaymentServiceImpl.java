@@ -370,6 +370,9 @@ public class PaymentServiceImpl implements PaymentService {
                     payment.setTradeNo(queryResp.getTradeNo());
                     paymentMapper.updateById(payment);
                     vo.setStatus(PayStatus.SUCCESS.code());
+                    vo.setTradeNo(queryResp.getTradeNo());  // FIX: vo 也需要 tradeNo，前端展示
+                    vo.setBuyerUserId(queryResp.getBuyerUserId());
+                    vo.setBuyerLogonId(queryResp.getBuyerLogonId());
                     log.info("[查询状态] 支付宝轮询成功: payNo={}", payment.getPayNo());
                 }
             } catch (Exception e) {
