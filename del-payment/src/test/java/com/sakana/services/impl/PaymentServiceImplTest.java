@@ -18,6 +18,7 @@ import com.sakana.exceptions.BizException;
 import com.sakana.feign.OrderClient;
 import com.sakana.feign.UserClient;
 import com.sakana.feign.vo.OrderSnapshotVO;
+import com.sakana.services.FreeOrderGrabService;
 import com.sakana.web.vo.PaymentInternalVO;
 import com.sakana.web.vo.PaymentStatusVO;
 import com.sakana.web.vo.PaymentVO;
@@ -66,6 +67,7 @@ class PaymentServiceImplTest {
     @Mock private UserClient userClient;
     @Mock private RedisTemplate<String, OrderSnapshotVO> redisTemplate;
     @Mock private ValueOperations<String, OrderSnapshotVO> valueOperations;
+    @Mock private FreeOrderGrabService freeOrderGrabService;
 
     private AlipayProperties alipayProperties;
     private PaymentServiceImpl service;
@@ -84,7 +86,7 @@ class PaymentServiceImplTest {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         service = new PaymentServiceImpl(
                 alipayClient, alipayProperties, paymentMapper, outboxMapper,
-                orderClient, userClient, redisTemplate);
+                orderClient, userClient, redisTemplate, freeOrderGrabService);
 
         // 默认静态 mock：验签失败（各测试按需 override）
         signatureMock = Mockito.mockStatic(AlipaySignature.class);
